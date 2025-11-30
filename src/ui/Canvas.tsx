@@ -13,6 +13,7 @@ export function Canvas({ preset, isPaused, onReset, resetComplete }: CanvasProps
   const containerRef = useRef<HTMLDivElement>(null);
   const workerRef = useRef<Worker | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  const offscreenRef = useRef<OffscreenCanvas | null>(null);
   const [capabilities, setCapabilities] = useState<GLCapabilities | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,7 +36,10 @@ export function Canvas({ preset, isPaused, onReset, resetComplete }: CanvasProps
     const container = containerRef.current;
     if (!canvas || !container) return;
 
-    const offscreen = canvas.transferControlToOffscreen();
+    if (!offscreenRef.current) {
+      offscreenRef.current = canvas.transferControlToOffscreen();
+    }
+    const offscreen = offscreenRef.current;
 
     const worker = new Worker(
       new URL('../worker/renderWorker.ts', import.meta.url),
@@ -80,6 +84,7 @@ export function Canvas({ preset, isPaused, onReset, resetComplete }: CanvasProps
       }
       worker.postMessage({ type: 'dispose' } satisfies MainToWorkerMsg);
       worker.terminate();
+      workerRef.current = null;
     };
   }, []);
 
