@@ -14,6 +14,7 @@ import {
   clampSim,
   clampRender,
 } from './engine/types';
+import { FIT_VIEW_WARMUP_ITERATIONS } from './engine/constants';
 import { ControlPanel } from './ui/ControlPanel';
 import { Canvas } from './ui/Canvas';
 import { mutatePreset, randomizePreset } from './ui/presetUtils';
@@ -42,7 +43,7 @@ function App() {
     const randomized = randomizePreset({ sim, render });
     randomized.preset.view = preset.view;
     setPreset(clampPreset(randomized.preset));
-    setFitRequest((f) => ({ version: f.version + 1, warmup: 5 }));
+    setFitRequest((f) => ({ version: f.version + 1, warmup: FIT_VIEW_WARMUP_ITERATIONS }));
   }, [preset.view, sim, render]);
 
   const handleMutate = useCallback(() => {
