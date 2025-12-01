@@ -52,10 +52,8 @@ src/
 ## TODO / next directions
 - Screenshots for docs.
 - Infinite zoom: simulate only visible region, spawn/retire particles as view changes.
-- UI overhaul: styling/UX polish, slider debouncing/feedback.
 - OffscreenCanvas fallback for browsers without support.
 - Postprocess rework: adaptive tone mapping, better dynamic range.
-- Mapping UI: richer preset library, save slots, styled controls.
 - By-map coloring (RGB accumulation) to highlight structure.
 - Better randomize/mutate strategies and curated presets.
 

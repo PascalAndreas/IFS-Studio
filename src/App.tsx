@@ -2,7 +2,7 @@
  * Main App component
  */
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   Preset,
   SimParams,
@@ -19,6 +19,7 @@ import { Canvas } from './ui/Canvas';
 import { mutatePreset, randomizePreset } from './ui/presetUtils';
 import { OverlayRoot } from './ui/overlay/OverlayRoot';
 import { buildTheme } from './ui/theme';
+import type { WorkerDiagnostics } from './engine/types';
 
 function App() {
   const [preset, setPreset] = useState<Preset>(createDefaultPreset());
@@ -26,6 +27,8 @@ function App() {
   const [render, setRender] = useState<RenderParams>(createDefaultRenderParams());
   const [resetTrigger, setResetTrigger] = useState(false);
   const [fitRequest, setFitRequest] = useState<{ version: number; warmup: number }>({ version: 0, warmup: 0 });
+  const [diagnostics, setDiagnostics] = useState<WorkerDiagnostics | null>(null);
+  const [diagnosticsVisible, setDiagnosticsVisible] = useState(false);
 
   const handlePresetChange = useCallback((newPreset: Preset) => {
     setPreset(clampPreset(newPreset));
@@ -101,6 +104,16 @@ function App() {
 
   const theme = useMemo(() => buildTheme(render.palette, !!render.invert), [render.palette, render.invert]);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === 'd') {
+        setDiagnosticsVisible((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   return (
     <div
       style={{
@@ -120,6 +133,7 @@ function App() {
         resetComplete={handleResetComplete}
         onViewChange={handleViewChange}
         fitRequest={fitRequest}
+        onDiagnostics={setDiagnostics}
       />
       <OverlayRoot
         preset={preset}
@@ -135,6 +149,9 @@ function App() {
         onExport={handleExport}
         onImport={handleImport}
         theme={theme}
+        diagnostics={diagnostics}
+        diagnosticsVisible={diagnosticsVisible}
+        onToggleDiagnostics={() => setDiagnosticsVisible((v) => !v)}
       />
     </div>
   );

@@ -3,6 +3,8 @@
  * Defines the Preset structure and worker message protocol
  */
 
+import { DEFAULT_BURN_IN, DEFAULT_DECAY, DEFAULT_EXPOSURE, DEFAULT_GAMMA } from './constants';
+
 export const MAX_MAPS = 8;
 
 /**
@@ -80,7 +82,7 @@ export interface Preset {
 }
 
 /**
- * Default preset - Sierpinski-like triangle
+ * Default preset - Barnsley Fern
  */
 export function createDefaultPreset(): Preset {
   return {
@@ -117,16 +119,16 @@ export function createDefaultPreset(): Preset {
 export function createDefaultSimParams(): SimParams {
   return {
     numPoints: 1_000_000,
-    burnIn: 5,
+    burnIn: DEFAULT_BURN_IN,
     seed: 42,
   };
 }
 
 export function createDefaultRenderParams(): RenderParams {
   return {
-    decay: 0.99,
-    exposure: 1.0,
-    gamma: 0.3,
+    decay: DEFAULT_DECAY,
+    exposure: DEFAULT_EXPOSURE,
+    gamma: DEFAULT_GAMMA,
     palette: 'viridis',
     invert: false,
   };
@@ -189,7 +191,6 @@ export type MainToWorkerMsg =
   | { type: 'init'; canvas: OffscreenCanvas; width: number; height: number; dpr: number; preset: Preset; sim: SimParams; render: RenderParams }
   | { type: 'resize'; width: number; height: number; dpr: number }
   | { type: 'updateConfig'; preset: Preset; sim: SimParams; render: RenderParams }
-  | { type: 'setPaused'; paused: boolean }
   | { type: 'resetAccum' }
   | { type: 'fitView'; warmup: number }
   | { type: 'dispose' };
@@ -197,7 +198,32 @@ export type MainToWorkerMsg =
 export type WorkerToMainMsg =
   | { type: 'ready'; capabilities: GLCapabilities }
   | { type: 'error'; message: string; stack?: string }
-  | { type: 'fitResult'; view: { scale: number; offset: { x: number; y: number } } };
+  | { type: 'fitResult'; view: { scale: number; offset: { x: number; y: number } } }
+  | { type: 'diag'; data: WorkerDiagnostics };
+
+export interface WorkerDiagnostics {
+  frame: number;
+  fps: number;
+  viewScale: number;
+  viewOffset: { x: number; y: number };
+  numPointsGlobal: number;
+  numPointsLocal: number;
+  localSampleCount: number;
+  localInViewCount: number;
+  respawnSeeds: number;
+  respawnSeedsSource: 'local' | 'global' | 'cache' | 'none';
+  respawnProb: number;
+  respawnBoostFrames: number;
+  decay: number;
+  exposure: number;
+  gamma: number;
+  burnIn: number;
+  drawnPoints: number;
+  localAgeGeBurn: number;
+  globalAgeGeBurn: number;
+  localAgeGeBurnInView: number;
+  globalAgeGeBurnInView: number;
+}
 
 const safeNumber = (v: any, fallback: number) => (Number.isFinite(v) ? v : fallback);
 

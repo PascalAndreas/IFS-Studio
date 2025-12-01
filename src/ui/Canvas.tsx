@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { MainToWorkerMsg, Preset, WorkerToMainMsg, SimParams, RenderParams } from '../engine/types';
+import { MainToWorkerMsg, Preset, WorkerToMainMsg, SimParams, RenderParams, WorkerDiagnostics } from '../engine/types';
 import { CONFIG_UPDATE_DEBOUNCE_MS } from '../engine/constants';
 import { AxisOverlays } from './AxisOverlays';
 import { Theme } from './theme';
@@ -13,9 +13,10 @@ interface CanvasProps {
   resetComplete: () => void;
   onViewChange: (view: { scale: number; offset: { x: number; y: number } }) => void;
   fitRequest: { version: number; warmup: number };
+  onDiagnostics?: (diag: WorkerDiagnostics) => void;
 }
 
-export function Canvas({ preset, sim, render, theme, onReset, resetComplete, onViewChange, fitRequest }: CanvasProps) {
+export function Canvas({ preset, sim, render, theme, onReset, resetComplete, onViewChange, fitRequest, onDiagnostics }: CanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const workerRef = useRef<Worker | null>(null);
@@ -72,6 +73,9 @@ export function Canvas({ preset, sim, render, theme, onReset, resetComplete, onV
           break;
         case 'fitResult':
           onViewChange(msg.view);
+          break;
+        case 'diag':
+          onDiagnostics?.(msg.data);
           break;
       }
     };

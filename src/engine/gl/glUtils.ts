@@ -50,7 +50,7 @@ export function createProgram(
     gl.transformFeedbackVaryings(
       program,
       config.transformFeedbackVaryings,
-      gl.SEPARATE_ATTRIBS
+      gl.INTERLEAVED_ATTRIBS
     );
   }
 

@@ -17,6 +17,7 @@ export const MAX_FRO_NORM = 2.5; // Max ||A||_Fro for map affine matrices
 export const DEFAULT_EXPOSURE = 1.0;
 export const DEFAULT_GAMMA = 0.3;
 export const DEFAULT_DECAY = 0.99;
+export const DEFAULT_BURN_IN = 5;
 
 // UI defaults
 export const DEFAULT_GAIN = 1;

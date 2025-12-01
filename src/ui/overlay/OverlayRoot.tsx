@@ -6,6 +6,8 @@ import { SimPanel } from '../panels/SimPanel';
 import { RenderPanel } from '../panels/RenderPanel';
 import { MapsPanel } from '../panels/MapsPanel';
 import { MenuPanel } from '../panels/MenuPanel';
+import { DiagnosticPanel } from '../panels/DiagnosticPanel';
+import type { WorkerDiagnostics } from '../../engine/types';
 
 interface OverlayRootProps {
   preset: Preset;
@@ -20,6 +22,9 @@ interface OverlayRootProps {
   onFitView: () => void;
   onExport: () => void;
   onImport: (file: File) => void;
+  diagnostics: WorkerDiagnostics | null;
+  diagnosticsVisible: boolean;
+  onToggleDiagnostics: () => void;
   theme: Theme;
 }
 
@@ -34,11 +39,14 @@ export function OverlayRoot(props: OverlayRootProps) {
     onRandomize,
     onMutate,
     onReset,
-    onFitView,
-    onExport,
-    onImport,
-    theme,
-  } = props;
+  onFitView,
+  onExport,
+  onImport,
+  diagnostics,
+  diagnosticsVisible,
+  onToggleDiagnostics,
+  theme,
+} = props;
 
   const toolbarButtonProps = {
     theme,
@@ -77,7 +85,14 @@ export function OverlayRoot(props: OverlayRootProps) {
         <ThemedIconButton icon="🎲" label="Randomize" onClick={onRandomize} {...toolbarButtonProps} title="Randomize" />
         <ThemedIconButton icon="✨" label="Mutate" onClick={onMutate} {...toolbarButtonProps} title="Mutate" />
         <ThemedIconButton icon="📐" label="Fit view" onClick={onFitView} {...toolbarButtonProps} title="Fit to view" />
+        <ThemedIconButton icon="🩺" label="Diag" onClick={onToggleDiagnostics} {...toolbarButtonProps} title="Toggle diagnostics (D)" />
       </div>
+
+      {diagnosticsVisible && (
+        <div style={{ position: 'absolute', right: theme.spacing.lg, top: 96, pointerEvents: 'auto', maxWidth: 360 }}>
+          <DiagnosticPanel diagnostics={diagnostics} theme={theme} />
+        </div>
+      )}
 
       <div style={{ position: 'absolute', bottom: theme.spacing.lg, right: theme.spacing.lg, pointerEvents: 'auto', display: 'inline-flex', alignItems: 'center', gap: theme.spacing.xs, padding: `${theme.spacing.xs + 2}px ${theme.spacing.sm}px`, background: theme.colors.badgeBg, border: theme.border, borderRadius: theme.radius, color: theme.colors.text, fontFamily: theme.font, fontSize: 12 }}>
         <span style={{ opacity: 0.8 }}>IFS Studio</span>
