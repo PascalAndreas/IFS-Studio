@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { GLCapabilities, MainToWorkerMsg, Preset, WorkerToMainMsg } from '../engine/types';
+import { GLCapabilities, MainToWorkerMsg, Preset, WorkerToMainMsg, SimParams, RenderParams } from '../engine/types';
 
 interface CanvasProps {
   preset: Preset;
+  sim: SimParams;
+  render: RenderParams;
   isPaused: boolean;
   onReset: boolean;
   resetComplete: () => void;
@@ -10,7 +12,7 @@ interface CanvasProps {
   fitRequest: { version: number; warmup: number };
 }
 
-export function Canvas({ preset, isPaused, onReset, resetComplete, onViewChange, fitRequest }: CanvasProps) {
+export function Canvas({ preset, sim, render, isPaused, onReset, resetComplete, onViewChange, fitRequest }: CanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const workerRef = useRef<Worker | null>(null);
@@ -18,7 +20,7 @@ export function Canvas({ preset, isPaused, onReset, resetComplete, onViewChange,
   const offscreenRef = useRef<OffscreenCanvas | null>(null);
   const [capabilities, setCapabilities] = useState<GLCapabilities | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const presetSendTimer = useRef<number | null>(null);
+  const updateTimer = useRef<number | null>(null);
   const viewRef = useRef<{ scale: number; offset: { x: number; y: number } }>({
     scale: preset.view?.scale ?? 1,
     offset: preset.view?.offset ?? { x: 0, y: 0 },
@@ -81,6 +83,8 @@ export function Canvas({ preset, isPaused, onReset, resetComplete, onViewChange,
       height: rect.height,
       dpr: window.devicePixelRatio || 1,
       preset,
+      sim,
+      render,
     };
     worker.postMessage(initMsg, [offscreen as any]);
 
@@ -101,19 +105,21 @@ export function Canvas({ preset, isPaused, onReset, resetComplete, onViewChange,
 
   useEffect(() => {
     if (workerRef.current) {
-      if (presetSendTimer.current) {
-        clearTimeout(presetSendTimer.current);
+      if (updateTimer.current) {
+        clearTimeout(updateTimer.current);
       }
-      presetSendTimer.current = window.setTimeout(() => {
+      updateTimer.current = window.setTimeout(() => {
         const msg: MainToWorkerMsg = {
-          type: 'updatePreset',
+          type: 'updateConfig',
           preset,
+          sim,
+          render,
         };
         workerRef.current?.postMessage(msg);
-        presetSendTimer.current = null;
+        updateTimer.current = null;
       }, 60);
     }
-  }, [preset]);
+  }, [preset, sim, render]);
 
   useEffect(() => {
     viewRef.current = {
@@ -261,7 +267,7 @@ export function Canvas({ preset, isPaused, onReset, resetComplete, onViewChange,
           display: 'block',
         }}
       />
-      <AxisOverlays view={viewRef.current} invert={!!preset.render.invert} paletteId={preset.render.palette === 'magma' ? 1 : preset.render.palette === 'viridis' ? 2 : preset.render.palette === 'turbo' ? 3 : 0} />
+      <AxisOverlays view={viewRef.current} invert={!!render.invert} paletteId={render.palette === 'magma' ? 1 : render.palette === 'viridis' ? 2 : render.palette === 'turbo' ? 3 : 0} />
       <div
         style={{
           position: 'absolute',

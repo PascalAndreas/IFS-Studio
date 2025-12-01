@@ -1,4 +1,6 @@
 import { createProgram } from './glUtils';
+import decayVertSrc from '../../shaders/accumulateDecay.vert.glsl?raw';
+import decayFragSrc from '../../shaders/accumulateDecay.frag.glsl?raw';
 
 export type AccumulateSettings = {
   width: number;
@@ -100,23 +102,8 @@ export class AccumulatePass {
   private createDecayProgram(): void {
     const gl = this.gl;
     this.decayProgram = createProgram(gl, {
-      vertexSource: `#version 300 es
-      const vec2 verts[3] = vec2[3](vec2(-1., -1.), vec2(3., -1.), vec2(-1., 3.));
-      out vec2 v_uv;
-      void main() {
-        vec2 p = verts[gl_VertexID];
-        v_uv = p * 0.5 + 0.5;
-        gl_Position = vec4(p, 0., 1.);
-      }`,
-      fragmentSource: `#version 300 es
-      precision highp float;
-      in vec2 v_uv;
-      out vec4 fragColor;
-      uniform sampler2D u_prev;
-      uniform float u_decay;
-      void main() {
-        fragColor = u_decay * texture(u_prev, v_uv);
-      }`,
+      vertexSource: decayVertSrc,
+      fragmentSource: decayFragSrc,
     });
     this.uDecay = gl.getUniformLocation(this.decayProgram, 'u_decay');
     this.uPrev = gl.getUniformLocation(this.decayProgram, 'u_prev');

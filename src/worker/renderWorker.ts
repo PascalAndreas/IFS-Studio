@@ -1,8 +1,10 @@
 import { detectCapabilities, logCapabilities } from '../engine/gl/capabilities';
-import { GLCapabilities, MainToWorkerMsg, Preset, WorkerToMainMsg } from '../engine/types';
+import { GLCapabilities, MainToWorkerMsg, Preset, WorkerToMainMsg, SimParams, RenderParams } from '../engine/types';
 import { PostprocessPass } from '../engine/gl/postprocessPass';
 import { TransformFeedbackSim } from '../engine/gl/transformFeedbackSim';
 import { AccumulatePass } from '../engine/gl/accumulatePass';
+import pointVertSrc from '../shaders/points.vert.glsl?raw';
+import pointFragSrc from '../shaders/points.frag.glsl?raw';
 
 type RafHandle = number | null;
 
@@ -18,6 +20,8 @@ class RenderWorker {
   private canvas: OffscreenCanvas | null = null;
   private capabilities: GLCapabilities | null = null;
   private preset: Preset | null = null;
+  private simParams: SimParams | null = null;
+  private renderParams: RenderParams | null = null;
   private loopHandle: RafHandle = null;
   private isPaused = false;
   private pixelWidth = 0;
@@ -36,6 +40,8 @@ class RenderWorker {
   init(msg: Extract<MainToWorkerMsg, { type: 'init' }>) {
     this.canvas = msg.canvas;
     this.preset = msg.preset;
+    this.simParams = msg.sim;
+    this.renderParams = msg.render;
     this.animationSpeed = this.computeAnimationSpeed();
     this.setSize(msg.width, msg.height, msg.dpr);
 
@@ -68,10 +74,10 @@ class RenderWorker {
       });
 
       this.sim = new TransformFeedbackSim(gl, {
-        numPoints: this.preset.sim.numPoints,
-        seed: this.preset.sim.seed,
+        numPoints: this.simParams!.numPoints,
+        seed: this.simParams!.seed,
       });
-      this.sim.setPreset(this.preset);
+      this.sim.setMaps(this.preset.maps);
       this.initPointProgram();
 
       this.postMessage({ type: 'ready', capabilities: this.capabilities });
@@ -81,23 +87,25 @@ class RenderWorker {
     }
   }
 
-  updatePreset(preset: Preset) {
-    const prev = this.preset;
-    const prevMaps = prev ? JSON.stringify(prev.maps) : '';
-    const nextMaps = JSON.stringify(preset.maps);
-    const structural =
-      !prev ||
-      prev.sim.numPoints !== preset.sim.numPoints ||
-      prev.sim.seed !== preset.sim.seed ||
-      prevMaps !== nextMaps ||
-      JSON.stringify(prev.view) !== JSON.stringify(preset.view);
+  updateConfig(preset: Preset, sim: SimParams, render: RenderParams) {
+    const prevPreset = this.preset;
+    const prevSim = this.simParams;
+    const mapsChanged = JSON.stringify(prevPreset?.maps || []) !== JSON.stringify(preset.maps);
+    const viewChanged = JSON.stringify(prevPreset?.view) !== JSON.stringify(preset.view);
+    const simChanged =
+      !prevSim || prevSim.numPoints !== sim.numPoints || prevSim.seed !== sim.seed || prevSim.burnIn !== sim.burnIn;
 
     this.preset = preset;
+    this.simParams = sim;
+    this.renderParams = render;
     this.animationSpeed = this.computeAnimationSpeed();
+
     if (this.sim) {
-      this.sim.setPreset(preset);
+      this.sim.setParams(sim);
+      if (mapsChanged) this.sim.setMaps(preset.maps);
     }
-    if (structural) {
+
+    if (mapsChanged || simChanged || viewChanged) {
       this.resetAccumulation();
     }
   }
@@ -166,17 +174,17 @@ class RenderWorker {
     gl.disable(gl.DEPTH_TEST);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
-    const exposure = this.preset?.render.exposure ?? 1.0;
-    const gamma = this.preset?.render.gamma ?? 2.2;
-    const paletteId = this.paletteToId(this.preset?.render.palette ?? 'grayscale');
-    const invert = !!this.preset?.render.invert;
+    const exposure = this.renderParams?.exposure ?? 1.0;
+    const gamma = this.renderParams?.gamma ?? 2.2;
+    const paletteId = this.paletteToId(this.renderParams?.palette ?? 'grayscale');
+    const invert = !!this.renderParams?.invert;
     const timeSec = (time * 0.001) * this.animationSpeed;
 
     // Update simulation
     this.sim.step(this.frameIndex++);
 
     // Begin accumulation: decay previous frame into write target
-    this.accumulate.beginFrame(this.preset?.render.decay ?? 0.99);
+    this.accumulate.beginFrame(this.renderParams?.decay ?? 0.99);
 
     // Render points additively into accumulation target
     gl.useProgram(this.pointProgram);
@@ -191,7 +199,7 @@ class RenderWorker {
     if (this.pointViewOffsetLoc) gl.uniform2f(this.pointViewOffsetLoc, viewOffset.x, viewOffset.y);
     if (this.pointSizeLoc) gl.uniform1f(this.pointSizeLoc, 1.5);
 
-    if (this.frameIndex >= (this.preset?.sim.burnIn ?? 0)) {
+    if (this.frameIndex >= (this.simParams?.burnIn ?? 0)) {
       this.accumulate.drawPoints(this.sim.getNumPoints(), 1.5);
     }
     this.accumulate.endFrame();
@@ -222,7 +230,7 @@ class RenderWorker {
 
   private computeAnimationSpeed(): number {
     // Tie the simple animation to preset values so preset updates are observable.
-    return this.preset ? 0.5 + Math.min(1.5, Math.max(0.2, this.preset.render.decay)) : 1;
+    return this.renderParams ? 0.5 + Math.min(1.5, Math.max(0.2, this.renderParams.decay)) : 1;
   }
 
   private paletteToId(p: string): number {
@@ -282,35 +290,18 @@ class RenderWorker {
   private initPointProgram() {
     if (!this.gl) return;
     const gl = this.gl;
-    const vert = `#version 300 es
-    layout(location = 0) in vec2 a_position;
-    uniform float u_pointSize;
-    uniform vec2 u_viewScale;
-    uniform vec2 u_viewOffset;
-    void main() {
-      vec2 p = a_position * u_viewScale + u_viewOffset;
-      gl_Position = vec4(p, 0.0, 1.0);
-      gl_PointSize = u_pointSize;
-    }`;
-    const frag = `#version 300 es
-    precision highp float;
-    out vec4 fragColor;
-    uniform vec3 u_color;
-    void main() {
-      fragColor = vec4(u_color, 0.15);
-    }`;
     this.pointProgram = gl.createProgram();
     if (!this.pointProgram) throw new Error('Failed to create point program');
 
     const vs = gl.createShader(gl.VERTEX_SHADER)!;
-    gl.shaderSource(vs, vert);
+    gl.shaderSource(vs, pointVertSrc);
     gl.compileShader(vs);
     if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
       throw new Error(`Point VS compile error: ${gl.getShaderInfoLog(vs) || ''}`);
     }
 
     const fs = gl.createShader(gl.FRAGMENT_SHADER)!;
-    gl.shaderSource(fs, frag);
+    gl.shaderSource(fs, pointFragSrc);
     gl.compileShader(fs);
     if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
       throw new Error(`Point FS compile error: ${gl.getShaderInfoLog(fs) || ''}`);
@@ -353,8 +344,8 @@ self.onmessage = (event: MessageEvent<MainToWorkerMsg>) => {
     case 'resize':
       worker.resize(msg.width, msg.height, msg.dpr);
       break;
-    case 'updatePreset':
-      worker.updatePreset(msg.preset);
+    case 'updateConfig':
+      worker.updateConfig(msg.preset, msg.sim, msg.render);
       break;
     case 'fitView':
       worker.handleFitRequest(msg.warmup);

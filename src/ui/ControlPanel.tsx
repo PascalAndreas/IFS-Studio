@@ -2,11 +2,15 @@
  * Control panel component - left sidebar with all controls
  */
 
-import { Preset, MAX_MAPS, clampPreset, IFSMap } from '../engine/types';
+import { Preset, MAX_MAPS, clampPreset, IFSMap, SimParams, RenderParams, clampSim, clampRender } from '../engine/types';
 
 interface ControlPanelProps {
   preset: Preset;
+  sim: SimParams;
+  render: RenderParams;
   onPresetChange: (preset: Preset) => void;
+  onSimChange: (sim: SimParams) => void;
+  onRenderChange: (render: RenderParams) => void;
   onRandomize: () => void;
   onMutate: () => void;
   onFitView: () => void;
@@ -20,7 +24,11 @@ interface ControlPanelProps {
 
 export function ControlPanel({
   preset,
+  sim,
+  render,
   onPresetChange,
+  onSimChange,
+  onRenderChange,
   onRandomize,
   onReset,
   onMutate,
@@ -98,8 +106,8 @@ export function ControlPanel({
           <label>Seed</label>
           <input
             type="number"
-            value={preset.sim.seed}
-            onChange={(e) => handleValueChange(['sim', 'seed'], parseInt(e.target.value))}
+            value={sim.seed}
+            onChange={(e) => onSimChange(clampSim({ ...sim, seed: parseInt(e.target.value) }))}
             style={inputStyle}
           />
         </div>
@@ -108,8 +116,8 @@ export function ControlPanel({
           <label>Num Points</label>
           <input
             type="number"
-            value={preset.sim.numPoints}
-            onChange={(e) => handleValueChange(['sim', 'numPoints'], parseInt(e.target.value))}
+            value={sim.numPoints}
+            onChange={(e) => onSimChange(clampSim({ ...sim, numPoints: parseInt(e.target.value) }))}
             style={inputStyle}
           />
         </div>
@@ -118,8 +126,8 @@ export function ControlPanel({
           <label>Burn In</label>
           <input
             type="number"
-            value={preset.sim.burnIn}
-            onChange={(e) => handleValueChange(['sim', 'burnIn'], parseInt(e.target.value))}
+            value={sim.burnIn}
+            onChange={(e) => onSimChange(clampSim({ ...sim, burnIn: parseInt(e.target.value) }))}
             style={inputStyle}
           />
         </div>
@@ -134,8 +142,8 @@ export function ControlPanel({
           <input
             type="number"
             step="0.001"
-            value={preset.render.decay}
-            onChange={(e) => handleValueChange(['render', 'decay'], parseFloat(e.target.value))}
+            value={render.decay}
+            onChange={(e) => onRenderChange(clampRender({ ...render, decay: parseFloat(e.target.value) }))}
             style={inputStyle}
           />
         </div>
@@ -145,8 +153,8 @@ export function ControlPanel({
           <input
             type="number"
             step="0.1"
-            value={preset.render.exposure}
-            onChange={(e) => handleValueChange(['render', 'exposure'], parseFloat(e.target.value))}
+            value={render.exposure}
+            onChange={(e) => onRenderChange(clampRender({ ...render, exposure: parseFloat(e.target.value) }))}
             style={inputStyle}
           />
         </div>
@@ -156,8 +164,8 @@ export function ControlPanel({
           <input
             type="number"
             step="0.1"
-            value={preset.render.gamma}
-            onChange={(e) => handleValueChange(['render', 'gamma'], parseFloat(e.target.value))}
+            value={render.gamma}
+            onChange={(e) => onRenderChange(clampRender({ ...render, gamma: parseFloat(e.target.value) }))}
             style={inputStyle}
           />
         </div>
@@ -165,8 +173,8 @@ export function ControlPanel({
         <div style={{ marginBottom: '8px' }}>
           <label>Palette</label>
           <select
-            value={preset.render.palette}
-            onChange={(e) => handleValueChange(['render', 'palette'], e.target.value)}
+            value={render.palette}
+            onChange={(e) => onRenderChange(clampRender({ ...render, palette: e.target.value as RenderParams['palette'] }))}
             style={inputStyle}
           >
             <option value="grayscale">Grayscale</option>
@@ -180,8 +188,8 @@ export function ControlPanel({
           <label>
             <input
               type="checkbox"
-              checked={!!preset.render.invert}
-              onChange={(e) => handleValueChange(['render', 'invert'], e.target.checked)}
+              checked={!!render.invert}
+              onChange={(e) => onRenderChange(clampRender({ ...render, invert: e.target.checked }))}
               style={{ marginRight: '6px' }}
             />
             Invert

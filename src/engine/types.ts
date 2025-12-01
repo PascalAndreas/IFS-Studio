@@ -65,15 +65,18 @@ export interface SimParams {
 /**
  * Complete preset definition
  */
+export interface ViewParams {
+  scale: number;
+  offset: { x: number; y: number };
+}
+
+/**
+ * Map preset: name + maps + view transform
+ */
 export interface Preset {
   name: string;
-  sim: SimParams;
-  render: RenderParams;
   maps: IFSMap[];       // Length must be <= MAX_MAPS
-  view?: {
-    scale: number;      // Uniform scale applied in point render
-    offset: { x: number; y: number }; // Offset in clip space
-  };
+  view?: ViewParams;
 }
 
 /**
@@ -82,18 +85,6 @@ export interface Preset {
 export function createDefaultPreset(): Preset {
   return {
     name: "Barnsley Fern (fit)",
-    sim: {
-      numPoints: 1_000_000,
-      burnIn: 5,
-      seed: 42,
-    },
-    render: {
-      decay: 0.99,
-      exposure: 1.0,
-      gamma: 0.3,
-      palette: 'viridis',
-      invert: false,
-    },
     view: {
       scale: 0.18,
       offset: { x: 0, y: -0.9 },
@@ -120,6 +111,24 @@ export function createDefaultPreset(): Preset {
         probability: 0.07,
       },
     ],
+  };
+}
+
+export function createDefaultSimParams(): SimParams {
+  return {
+    numPoints: 1_000_000,
+    burnIn: 5,
+    seed: 42,
+  };
+}
+
+export function createDefaultRenderParams(): RenderParams {
+  return {
+    decay: 0.99,
+    exposure: 1.0,
+    gamma: 0.3,
+    palette: 'viridis',
+    invert: false,
   };
 }
 
@@ -161,9 +170,9 @@ export function computeNormalizedCdf(maps: IFSMap[]): { cdf: number[]; numMaps: 
 }
 
 export type MainToWorkerMsg =
-  | { type: 'init'; canvas: OffscreenCanvas; width: number; height: number; dpr: number; preset: Preset }
+  | { type: 'init'; canvas: OffscreenCanvas; width: number; height: number; dpr: number; preset: Preset; sim: SimParams; render: RenderParams }
   | { type: 'resize'; width: number; height: number; dpr: number }
-  | { type: 'updatePreset'; preset: Preset }
+  | { type: 'updateConfig'; preset: Preset; sim: SimParams; render: RenderParams }
   | { type: 'setPaused'; paused: boolean }
   | { type: 'resetAccum' }
   | { type: 'fitView'; warmup: number }
@@ -192,8 +201,9 @@ export function normalizeProbabilities(maps: IFSMap[]): IFSMap[] {
   return result;
 }
 
+const safeNumber = (v: any, fallback: number) => (Number.isFinite(v) ? v : fallback);
+
 export function clampPreset(preset: Preset): Preset {
-  const safeNumber = (v: any, fallback: number) => (Number.isFinite(v) ? v : fallback);
   const maps = normalizeProbabilities(
     preset.maps.slice(0, MAX_MAPS).map((m) => ({
       ...m,
@@ -222,20 +232,26 @@ export function clampPreset(preset: Preset): Preset {
 
   return {
     ...preset,
-    sim: {
-      ...preset.sim,
-      numPoints: Math.round(Math.max(100, safeNumber(preset.sim.numPoints, 100000))),
-      burnIn: Math.max(0, Math.round(safeNumber(preset.sim.burnIn, 0))),
-      seed: Math.round(safeNumber(preset.sim.seed, 1)),
-    },
-    render: {
-      ...preset.render,
-      decay: Math.max(0, Math.min(1, safeNumber(preset.render.decay, 0.99))),
-      exposure: Math.max(0, safeNumber(preset.render.exposure, 1)),
-      gamma: Math.max(0.0001, safeNumber(preset.render.gamma, 2.2)),
-      palette: preset.render.palette,
-      invert: !!preset.render.invert,
-    },
+    name: preset.name || 'Preset',
+    view: preset.view ?? { scale: 1, offset: { x: 0, y: 0 } },
     maps,
+  };
+}
+
+export function clampSim(sim: SimParams): SimParams {
+  return {
+    numPoints: Math.round(Math.max(100, safeNumber(sim.numPoints, 100000))),
+    burnIn: Math.max(0, Math.round(safeNumber(sim.burnIn, 0))),
+    seed: Math.round(safeNumber(sim.seed, 1)),
+  };
+}
+
+export function clampRender(render: RenderParams): RenderParams {
+  return {
+    decay: Math.max(0, Math.min(1, safeNumber(render.decay, 0.99))),
+    exposure: Math.max(0, safeNumber(render.exposure, 1)),
+    gamma: Math.max(0.0001, safeNumber(render.gamma, 2.2)),
+    palette: render.palette,
+    invert: !!render.invert,
   };
 }

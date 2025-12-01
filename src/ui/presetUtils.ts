@@ -1,4 +1,4 @@
-import { Preset, IFSMap, MAX_MAPS, clampPreset } from '../engine/types';
+import { IFSMap, MAX_MAPS, Preset, clampPreset, clampSim, clampRender, SimParams, RenderParams } from '../engine/types';
 
 const rand = (min: number, max: number) => Math.random() * (max - min) + min;
 const sampleProbabilities = (n: number) => {
@@ -7,7 +7,7 @@ const sampleProbabilities = (n: number) => {
   return arr.map((v) => v / sum);
 };
 
-export function randomizePreset(): Preset {
+export function randomizePreset(base: { sim: SimParams; render: RenderParams }): { preset: Preset; sim: SimParams; render: RenderParams } {
   const numMaps = Math.min(MAX_MAPS, Math.floor(rand(3, 6)));
   const probs = sampleProbabilities(numMaps);
   const maps: IFSMap[] = [];
@@ -44,32 +44,24 @@ export function randomizePreset(): Preset {
     });
   }
 
-  const preset: Preset = {
+  const preset: Preset = clampPreset({
     name: 'Random',
-    sim: {
-      numPoints: 120000,
-      burnIn: 0,
-      seed: Math.floor(Math.random() * 1_000_000),
-    },
-    render: {
-      decay: 0.99,
-      exposure: 1.0,
-      gamma: 2.2,
-      palette: 'turbo',
-      invert: false,
-    },
     view: {
       scale: 0.18,
       offset: { x: 0, y: -0.9 },
     },
     maps,
-  };
+  });
 
-  return clampPreset(preset);
+  return {
+    preset,
+    sim: clampSim(base.sim),
+    render: clampRender(base.render),
+  };
 }
 
-export function mutatePreset(p: Preset): Preset {
-  const next: Preset = JSON.parse(JSON.stringify(p));
+export function mutatePreset(p: { preset: Preset; sim: SimParams; render: RenderParams }): { preset: Preset; sim: SimParams; render: RenderParams } {
+  const next: Preset = JSON.parse(JSON.stringify(p.preset));
   next.maps = next.maps.slice(0, MAX_MAPS).map((m) => {
     const jitter = () => rand(-0.05, 0.05);
     const warpJitter = () => rand(-0.1, 0.1);
@@ -97,6 +89,10 @@ export function mutatePreset(p: Preset): Preset {
       },
     };
   });
-  next.sim = { ...next.sim, seed: p.sim.seed + 1 };
-  return clampPreset(next);
+
+  return {
+    preset: clampPreset(next),
+    sim: clampSim(p.sim),
+    render: clampRender(p.render),
+  };
 }
