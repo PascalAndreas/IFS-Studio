@@ -16,10 +16,8 @@ uniform vec4 u_warpA[__MAX_MAPS__];
 uniform vec4 u_warpK[__MAX_MAPS__];
 uniform float u_viewScale;
 uniform vec2 u_viewOffset;
-uniform float u_respawnProb;
-uniform vec3 u_respawnSeeds[32];
-uniform int u_numRespawnSeeds;
 uniform int u_iterCount;
+uniform int u_useGuard;
 
 uint hash3(uvec3 v) {
   uint h = v.x * 374761393u + v.y * 668265263u + v.z * 2147483647u;
@@ -59,32 +57,12 @@ void main() {
       p.y += a.z * sin(k.z * p.y) + a.w * cos(k.w * p.x);
     }
 
-    if (any(isnan(p))) {
-      float r1 = rand(uvec3(uint(gl_VertexID) + 17u + uint(iter), u_frame, u_seed));
-      float r2 = rand(uvec3(uint(gl_VertexID) + 31u + uint(iter), u_frame, u_seed));
-      p = vec2(r1 - 0.5, r2 - 0.5) * 0.05;
+    if (u_useGuard == 1 && any(isnan(p))) {
+      float r1 = rand(uvec3(uint(gl_VertexID) + 17u + uint(iter), u_frame, u_seed)) * 2.0 - 1.0;
+      float r2 = rand(uvec3(uint(gl_VertexID) + 31u + uint(iter), u_frame, u_seed)) * 2.0 - 1.0;
+      vec2 clipSpawn = vec2(r1, r2);
+      p = (clipSpawn - u_viewOffset) / u_viewScale;
       age = 0.0;
-    }
-
-    vec2 clip = p * u_viewScale + u_viewOffset;
-    if (u_respawnProb > 0.0 && (abs(clip.x) > 1.0 || abs(clip.y) > 1.0)) {
-      float respawnR = rand(uvec3(uint(gl_VertexID) + 97u + uint(iter), u_frame, u_seed));
-      if (respawnR < u_respawnProb) {
-        if (u_numRespawnSeeds > 0) {
-          float rSeed = rand(uvec3(uint(gl_VertexID) + 211u + uint(iter), u_frame, u_seed));
-          int idx = int(floor(rSeed * float(u_numRespawnSeeds)));
-          idx = clamp(idx, 0, u_numRespawnSeeds - 1);
-          vec3 seed = u_respawnSeeds[idx];
-          p = seed.xy;
-          age = seed.z;
-        } else {
-          float r1 = rand(uvec3(uint(gl_VertexID) + 193u + uint(iter), u_frame, u_seed)) * 2.0 - 1.0;
-          float r2 = rand(uvec3(uint(gl_VertexID) + 389u + uint(iter), u_frame, u_seed)) * 2.0 - 1.0;
-          vec2 clipSpawn = vec2(r1, r2);
-          p = (clipSpawn - u_viewOffset) / u_viewScale;
-          age = 0.0;
-        }
-      }
     }
 
     age += 1.0;

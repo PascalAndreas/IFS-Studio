@@ -1,4 +1,5 @@
 import { SimParams, clampSim } from '../../engine/types';
+import { DEFAULT_MAX_POST_FPS, DEFAULT_SIM_STEPS_PER_TICK } from '../../engine/constants';
 import { Theme } from '../theme';
 import { InfoTip } from '../components/InfoTip';
 
@@ -62,6 +63,46 @@ export function SimPanel({ sim, onSimChange, theme }: SimPanelProps) {
           onChange={(e) => onSimChange(clampSim({ ...sim, burnIn: parseInt(e.target.value || '0', 10) }))}
           style={inputStyle}
         />
+      </div>
+      <div style={rowStyle}>
+        <div style={labelStyle}>Iters / Step <InfoTip helpKey="sim.itersPerStep" theme={theme} /></div>
+        <input
+          type="number"
+          value={sim.itersPerStep ?? 16}
+          min={1}
+          onChange={(e) => onSimChange(clampSim({ ...sim, itersPerStep: parseInt(e.target.value || '1', 10) }))}
+          style={inputStyle}
+        />
+      </div>
+      <div style={rowStyle}>
+        <div style={labelStyle}>Sim Steps / Tick <InfoTip helpKey="sim.simStepsPerTick" theme={theme} /></div>
+        <input
+          type="number"
+          value={sim.simStepsPerTick ?? DEFAULT_SIM_STEPS_PER_TICK}
+          min={1}
+          onChange={(e) => onSimChange(clampSim({ ...sim, simStepsPerTick: parseInt(e.target.value || '1', 10) }))}
+          style={inputStyle}
+        />
+      </div>
+      <div style={rowStyle}>
+        <div style={labelStyle}>Post Max FPS <InfoTip helpKey="sim.maxPostFps" theme={theme} /></div>
+        <input
+          type="number"
+          value={sim.maxPostFps ?? DEFAULT_MAX_POST_FPS}
+          min={1}
+          onChange={(e) => onSimChange(clampSim({ ...sim, maxPostFps: parseInt(e.target.value || '1', 10) }))}
+          style={inputStyle}
+        />
+      </div>
+      <div style={{ ...rowStyle, display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, color: theme.colors.muted }}>
+          <input
+            type="checkbox"
+            checked={!!sim.useGuard}
+            onChange={(e) => onSimChange(clampSim({ ...sim, useGuard: e.target.checked }))}
+          />
+          NaN Guard <InfoTip helpKey="sim.useGuard" theme={theme} />
+        </label>
       </div>
     </div>
   );

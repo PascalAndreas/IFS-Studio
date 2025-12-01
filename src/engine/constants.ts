@@ -18,6 +18,13 @@ export const DEFAULT_EXPOSURE = 1.0;
 export const DEFAULT_GAMMA = 0.3;
 export const DEFAULT_DECAY = 0.99;
 export const DEFAULT_BURN_IN = 5;
+export const DEFAULT_NUM_POINTS = 1_000_000;
+export const DEFAULT_SEED = 42;
+export const DEFAULT_ITERS_PER_STEP = 16;
+export const DEFAULT_SIM_STEPS_PER_TICK = 4;
+export const DEFAULT_MAX_POST_FPS = 30;
+export const DEFAULT_USE_GUARD = true;
+export const DEFAULT_PALETTE: 'grayscale' | 'magma' | 'viridis' | 'turbo' = 'magma';
 
 // UI defaults
 export const DEFAULT_GAIN = 1;

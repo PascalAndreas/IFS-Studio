@@ -6,8 +6,8 @@ import tfFragSrc from '../../shaders/tfSim.frag.glsl?raw';
 export type SimParams = {
   numPoints: number;
   seed: number;
-  population?: 'global' | 'local';
   itersPerStep?: number;
+  useGuard?: boolean;
 };
 
 export class TransformFeedbackSim {
@@ -37,22 +37,19 @@ export class TransformFeedbackSim {
   private uWarpK: WebGLUniformLocation | null = null;
   private uViewScale: WebGLUniformLocation | null = null;
   private uViewOffset: WebGLUniformLocation | null = null;
-  private uRespawnProb: WebGLUniformLocation | null = null;
-  private uRespawnSeeds: WebGLUniformLocation | null = null;
-  private uNumRespawnSeeds: WebGLUniformLocation | null = null;
   private uIterCount: WebGLUniformLocation | null = null;
-  private respawnSeeds = new Float32Array(32 * 3);
-  private respawnSeedCount = 0;
+  private uUseGuard: WebGLUniformLocation | null = null;
 
   private viewScale = 1;
   private viewOffset: { x: number; y: number } = { x: 0, y: 0 };
-  private respawnProb = 0;
   private itersPerStep = 1;
+  private useGuard = true;
 
   constructor(gl: WebGL2RenderingContext, params: SimParams) {
     this.gl = gl;
     this.params = params;
     this.itersPerStep = Math.max(1, Math.floor(params.itersPerStep ?? 1));
+    this.useGuard = params.useGuard ?? true;
     this.initProgram();
     this.initBuffers();
   }
@@ -65,6 +62,7 @@ export class TransformFeedbackSim {
     const numChanged = params.numPoints !== this.params.numPoints;
     this.params = params;
     this.itersPerStep = Math.max(1, Math.floor(params.itersPerStep ?? this.itersPerStep));
+    this.useGuard = params.useGuard ?? true;
     if (numChanged) {
       this.disposeBuffers();
       this.initBuffers();
@@ -80,20 +78,6 @@ export class TransformFeedbackSim {
     this.viewOffset = offset;
   }
 
-  setRespawnProb(p: number): void {
-    this.respawnProb = Math.max(0, Math.min(1, p));
-  }
-
-  setRespawnSeeds(seeds: { x: number; y: number; age?: number }[]): void {
-    const count = Math.min(32, seeds.length);
-    this.respawnSeedCount = count;
-    for (let i = 0; i < count; i++) {
-      this.respawnSeeds[i * 2 + 0] = seeds[i].x;
-      this.respawnSeeds[i * 2 + 1] = seeds[i].y;
-      this.respawnSeeds[i * 2 + 2] = seeds[i].age ?? 0;
-    }
-  }
-
   step(frameIndex: number): void {
     if (!this.program || !this.buffers || !this.vaos || !this.tf) return;
     const gl = this.gl;
@@ -105,10 +89,8 @@ export class TransformFeedbackSim {
     if (this.uFrame) gl.uniform1ui(this.uFrame, frameIndex >>> 0);
     if (this.uViewScale) gl.uniform1f(this.uViewScale, this.viewScale);
     if (this.uViewOffset) gl.uniform2f(this.uViewOffset, this.viewOffset.x, this.viewOffset.y);
-    if (this.uRespawnProb) gl.uniform1f(this.uRespawnProb, this.respawnProb);
-    if (this.uRespawnSeeds) gl.uniform3fv(this.uRespawnSeeds, this.respawnSeeds);
-    if (this.uNumRespawnSeeds) gl.uniform1i(this.uNumRespawnSeeds, this.respawnSeedCount);
     if (this.uIterCount) gl.uniform1i(this.uIterCount, this.itersPerStep);
+    if (this.uUseGuard) gl.uniform1i(this.uUseGuard, this.useGuard ? 1 : 0);
 
     // Source geometry
     gl.bindVertexArray(this.vaos[this.readIndex]);
@@ -179,15 +161,16 @@ export class TransformFeedbackSim {
     return { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } };
   }
 
-  samplePositions(maxSamples: number): Float32Array {
+  samplePositions(maxSamples: number, startIndex = 0): Float32Array {
     if (!this.buffers) {
       return new Float32Array(0);
     }
     const gl = this.gl;
     const samples = Math.min(maxSamples, this.params.numPoints);
     const array = new Float32Array(samples * 3);
+    const offsetBytes = Math.max(0, Math.min(startIndex, this.params.numPoints - samples)) * 12;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers[this.readIndex]);
-    gl.getBufferSubData(gl.ARRAY_BUFFER, 0, array);
+    gl.getBufferSubData(gl.ARRAY_BUFFER, offsetBytes, array);
     gl.bindBuffer(gl.ARRAY_BUFFER, null);
     return array;
   }
@@ -218,10 +201,8 @@ export class TransformFeedbackSim {
     this.uWarpK = this.gl.getUniformLocation(this.program, 'u_warpK');
     this.uViewScale = this.gl.getUniformLocation(this.program, 'u_viewScale');
     this.uViewOffset = this.gl.getUniformLocation(this.program, 'u_viewOffset');
-    this.uRespawnProb = this.gl.getUniformLocation(this.program, 'u_respawnProb');
-    this.uRespawnSeeds = this.gl.getUniformLocation(this.program, 'u_respawnSeeds');
-    this.uNumRespawnSeeds = this.gl.getUniformLocation(this.program, 'u_numRespawnSeeds');
     this.uIterCount = this.gl.getUniformLocation(this.program, 'u_iterCount');
+    this.uUseGuard = this.gl.getUniformLocation(this.program, 'u_useGuard');
   }
 
   private initBuffers(): void {

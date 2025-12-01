@@ -3,7 +3,19 @@
  * Defines the Preset structure and worker message protocol
  */
 
-import { DEFAULT_BURN_IN, DEFAULT_DECAY, DEFAULT_EXPOSURE, DEFAULT_GAMMA } from './constants';
+import {
+  DEFAULT_BURN_IN,
+  DEFAULT_DECAY,
+  DEFAULT_EXPOSURE,
+  DEFAULT_GAMMA,
+  DEFAULT_PALETTE,
+  DEFAULT_NUM_POINTS,
+  DEFAULT_SEED,
+  DEFAULT_ITERS_PER_STEP,
+  DEFAULT_SIM_STEPS_PER_TICK,
+  DEFAULT_MAX_POST_FPS,
+  DEFAULT_USE_GUARD,
+} from './constants';
 
 export const MAX_MAPS = 8;
 
@@ -62,6 +74,10 @@ export interface SimParams {
   numPoints: number;    // Number of particles
   burnIn: number;       // Frames to run before accumulating
   seed: number;         // RNG seed
+  itersPerStep?: number;
+  useGuard?: boolean;
+  simStepsPerTick?: number; // How many sim/accum steps per loop tick
+  maxPostFps?: number;      // Cap postprocess output FPS
 }
 
 /**
@@ -118,9 +134,13 @@ export function createDefaultPreset(): Preset {
 
 export function createDefaultSimParams(): SimParams {
   return {
-    numPoints: 1_000_000,
+    numPoints: DEFAULT_NUM_POINTS,
     burnIn: DEFAULT_BURN_IN,
-    seed: 42,
+    seed: DEFAULT_SEED,
+    itersPerStep: DEFAULT_ITERS_PER_STEP,
+    useGuard: DEFAULT_USE_GUARD,
+    simStepsPerTick: DEFAULT_SIM_STEPS_PER_TICK,
+    maxPostFps: DEFAULT_MAX_POST_FPS,
   };
 }
 
@@ -129,7 +149,7 @@ export function createDefaultRenderParams(): RenderParams {
     decay: DEFAULT_DECAY,
     exposure: DEFAULT_EXPOSURE,
     gamma: DEFAULT_GAMMA,
-    palette: 'viridis',
+    palette: DEFAULT_PALETTE,
     invert: false,
   };
 }
@@ -204,25 +224,10 @@ export type WorkerToMainMsg =
 export interface WorkerDiagnostics {
   frame: number;
   fps: number;
-  viewScale: number;
-  viewOffset: { x: number; y: number };
-  numPointsGlobal: number;
-  numPointsLocal: number;
-  localSampleCount: number;
-  localInViewCount: number;
-  respawnSeeds: number;
-  respawnSeedsSource: 'local' | 'global' | 'cache' | 'none';
-  respawnProb: number;
-  respawnBoostFrames: number;
-  decay: number;
-  exposure: number;
-  gamma: number;
-  burnIn: number;
   drawnPoints: number;
-  localAgeGeBurn: number;
-  globalAgeGeBurn: number;
-  localAgeGeBurnInView: number;
-  globalAgeGeBurnInView: number;
+  simMs: number;
+  drawMs: number;
+  frameMs: number;
 }
 
 const safeNumber = (v: any, fallback: number) => (Number.isFinite(v) ? v : fallback);
@@ -262,17 +267,21 @@ export function clampPreset(preset: Preset): Preset {
 
 export function clampSim(sim: SimParams): SimParams {
   return {
-    numPoints: Math.round(Math.max(100, safeNumber(sim.numPoints, 100000))),
-    burnIn: Math.max(0, Math.round(safeNumber(sim.burnIn, 0))),
-    seed: Math.round(safeNumber(sim.seed, 1)),
+    numPoints: Math.round(Math.max(100, safeNumber(sim.numPoints, DEFAULT_NUM_POINTS))),
+    burnIn: Math.max(0, Math.round(safeNumber(sim.burnIn, DEFAULT_BURN_IN))),
+    seed: Math.round(safeNumber(sim.seed, DEFAULT_SEED)),
+    itersPerStep: Math.max(1, Math.round(safeNumber(sim.itersPerStep, DEFAULT_ITERS_PER_STEP))),
+    useGuard: sim.useGuard ?? DEFAULT_USE_GUARD,
+    simStepsPerTick: Math.max(1, Math.round(safeNumber(sim.simStepsPerTick, DEFAULT_SIM_STEPS_PER_TICK))),
+    maxPostFps: Math.max(1, Math.round(safeNumber(sim.maxPostFps, DEFAULT_MAX_POST_FPS))),
   };
 }
 
 export function clampRender(render: RenderParams): RenderParams {
   return {
-    decay: Math.max(0, Math.min(1, safeNumber(render.decay, 0.99))),
-    exposure: Math.max(0, safeNumber(render.exposure, 1)),
-    gamma: Math.max(0.0001, safeNumber(render.gamma, 2.2)),
+    decay: Math.max(0, Math.min(1, safeNumber(render.decay, DEFAULT_DECAY))),
+    exposure: Math.max(0, safeNumber(render.exposure, DEFAULT_EXPOSURE)),
+    gamma: Math.max(0.0001, safeNumber(render.gamma, DEFAULT_GAMMA)),
     palette: render.palette,
     invert: !!render.invert,
   };
