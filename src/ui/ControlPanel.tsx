@@ -48,9 +48,9 @@ export function ControlPanel({
     applyPreset((p) => {
       let obj: any = p;
       for (let i = 0; i < path.length - 1; i++) {
-        obj = obj[path[i] as any];
+        obj = obj[path[i]];
       }
-      obj[path[path.length - 1] as any] = value;
+      obj[path[path.length - 1]] = value;
       return p;
     });
   };

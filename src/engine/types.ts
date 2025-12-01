@@ -169,6 +169,22 @@ export function computeNormalizedCdf(maps: IFSMap[]): { cdf: number[]; numMaps: 
   return { cdf, numMaps: n };
 }
 
+/**
+ * Convert palette name to numeric ID for shader uniforms
+ */
+export function paletteToId(palette: RenderParams['palette']): number {
+  switch (palette) {
+    case 'magma':
+      return 1;
+    case 'viridis':
+      return 2;
+    case 'turbo':
+      return 3;
+    default:
+      return 0;
+  }
+}
+
 export type MainToWorkerMsg =
   | { type: 'init'; canvas: OffscreenCanvas; width: number; height: number; dpr: number; preset: Preset; sim: SimParams; render: RenderParams }
   | { type: 'resize'; width: number; height: number; dpr: number }

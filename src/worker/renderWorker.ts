@@ -1,5 +1,6 @@
 import { detectCapabilities, logCapabilities } from '../engine/gl/capabilities';
-import { GLCapabilities, MainToWorkerMsg, Preset, WorkerToMainMsg, SimParams, RenderParams } from '../engine/types';
+import { GLCapabilities, MainToWorkerMsg, Preset, WorkerToMainMsg, SimParams, RenderParams, paletteToId } from '../engine/types';
+import { FIT_VIEW_MARGIN, BOUNDS_SAMPLE_SIZE } from '../engine/constants';
 import { PostprocessPass } from '../engine/gl/postprocessPass';
 import { TransformFeedbackSim } from '../engine/gl/transformFeedbackSim';
 import { AccumulatePass } from '../engine/gl/accumulatePass';
@@ -176,7 +177,7 @@ class RenderWorker {
 
     const exposure = this.renderParams?.exposure ?? 1.0;
     const gamma = this.renderParams?.gamma ?? 2.2;
-    const paletteId = this.paletteToId(this.renderParams?.palette ?? 'grayscale');
+    const paletteId = paletteToId(this.renderParams?.palette ?? 'grayscale');
     const invert = !!this.renderParams?.invert;
     const timeSec = (time * 0.001) * this.animationSpeed;
 
@@ -233,19 +234,6 @@ class RenderWorker {
     return this.renderParams ? 0.5 + Math.min(1.5, Math.max(0.2, this.renderParams.decay)) : 1;
   }
 
-  private paletteToId(p: string): number {
-    switch (p) {
-      case 'magma':
-        return 1;
-      case 'viridis':
-        return 2;
-      case 'turbo':
-        return 3;
-      default:
-        return 0;
-    }
-  }
-
   resetAccumulation() {
     this.frameIndex = 0;
     this.accumulate?.clear();
@@ -257,8 +245,7 @@ class RenderWorker {
     const height = bounds.max.y - bounds.min.y;
     const cx = (bounds.max.x + bounds.min.x) * 0.5;
     const cy = (bounds.max.y + bounds.min.y) * 0.5;
-    const margin = 1.2;
-    const scale = 2 / Math.max(width, height || 1e-6) / margin;
+    const scale = 2 / Math.max(width, height || 1e-6) / FIT_VIEW_MARGIN;
     this.preset = {
       ...this.preset,
       view: {
@@ -273,7 +260,7 @@ class RenderWorker {
     for (let i = 0; i < warmup; i++) {
       this.sim.step(this.frameIndex++);
     }
-    const bounds = this.sim.sampleBounds(4096);
+    const bounds = this.sim.sampleBounds(BOUNDS_SAMPLE_SIZE);
     const prevView = this.preset.view;
     this.fitView(bounds);
     if (
@@ -354,7 +341,7 @@ self.onmessage = (event: MessageEvent<MainToWorkerMsg>) => {
       worker.setPaused(msg.paused);
       break;
     case 'resetAccum':
-      worker['resetAccumulation']();
+      worker.resetAccumulation();
       break;
     case 'dispose':
       worker.dispose();
