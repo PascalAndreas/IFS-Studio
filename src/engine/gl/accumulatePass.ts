@@ -1,132 +1,176 @@
-/**
- * Accumulation pass - renders points to FBO with additive blending
- */
+import { createProgram } from './glUtils';
 
-import { createProgram, createTexture, createFramebuffer } from './glUtils';
-import { GLCapabilities } from '../types';
+export type AccumulateSettings = {
+  width: number;
+  height: number;
+  useFloat: boolean;
+};
 
 export class AccumulatePass {
   private gl: WebGL2RenderingContext;
-  private program!: WebGLProgram;
-  
-  // Ping-pong accumulation textures and FBOs
   private textures: [WebGLTexture, WebGLTexture] | null = null;
   private fbos: [WebGLFramebuffer, WebGLFramebuffer] | null = null;
-  
-  private currentTexture = 0;
-  private useFloatFormat: boolean;
+  private readIndex = 0;
+  private width: number;
+  private height: number;
+  private useFloat: boolean;
+  private decayProgram: WebGLProgram | null = null;
+  private uDecay: WebGLUniformLocation | null = null;
+  private uPrev: WebGLUniformLocation | null = null;
 
-  constructor(gl: WebGL2RenderingContext, capabilities: GLCapabilities) {
+  constructor(gl: WebGL2RenderingContext, settings: AccumulateSettings) {
     this.gl = gl;
-    this.useFloatFormat = capabilities.hasColorBufferFloat && capabilities.hasFloatBlend;
+    this.width = settings.width;
+    this.height = settings.height;
+    this.useFloat = settings.useFloat;
+    this.init();
   }
 
-  init(width: number, height: number): void {
+  resize(width: number, height: number): void {
+    this.width = width;
+    this.height = height;
+    this.disposeTextures();
+    this.createTargets();
+  }
+
+  beginFrame(decay: number): void {
     const gl = this.gl;
-    
-    // Create shader program
-    this.program = createProgram(gl, {
-      vertexSource: this.generateVertexShader(),
-      fragmentSource: this.generateFragmentShader(),
-    });
-    
-    // Create accumulation textures
-    const internalFormat = this.useFloatFormat ? gl.RGBA32F : gl.RGBA8;
-    const format = gl.RGBA;
-    const type = this.useFloatFormat ? gl.FLOAT : gl.UNSIGNED_BYTE;
-    
-    const tex0 = createTexture(gl, width, height, internalFormat, format, type);
-    const tex1 = createTexture(gl, width, height, internalFormat, format, type);
-    this.textures = [tex0, tex1];
-    
-    // Create FBOs
-    const fbo0 = createFramebuffer(gl, tex0);
-    const fbo1 = createFramebuffer(gl, tex1);
-    this.fbos = [fbo0, fbo1];
-    
-    // Clear both textures
-    this.clearTexture(fbo0);
-    this.clearTexture(fbo1);
+    if (!this.textures || !this.fbos || !this.decayProgram) return;
+    const writeIndex = (this.readIndex + 1) % 2;
+    gl.viewport(0, 0, this.width, this.height);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbos[writeIndex]);
+    gl.disable(gl.BLEND);
+
+    gl.useProgram(this.decayProgram);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.textures[this.readIndex]);
+    gl.uniform1i(this.uPrev, 0);
+    gl.uniform1f(this.uDecay, decay);
+
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
-  private generateVertexShader(): string {
-    return `#version 300 es
-    precision highp float;
-    
-    in vec2 a_Position;
-    
-    uniform mat4 u_ViewMatrix;
-    
-    void main() {
-      gl_Position = u_ViewMatrix * vec4(a_Position, 0.0, 1.0);
-      gl_PointSize = 1.0;
-    }
-    `;
-  }
-
-  private generateFragmentShader(): string {
-    return `#version 300 es
-    precision highp float;
-    
-    out vec4 fragColor;
-    
-    uniform float u_Intensity;
-    
-    void main() {
-      // Additive contribution
-      fragColor = vec4(u_Intensity);
-    }
-    `;
-  }
-
-  private clearTexture(fbo: WebGLFramebuffer): void {
+  drawPoints(numPoints: number, _pointSizePx: number): void {
     const gl = this.gl;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    if (!this.textures || !this.fbos) return;
+    const writeIndex = (this.readIndex + 1) % 2;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbos[writeIndex]);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE);
+    gl.blendEquation(gl.FUNC_ADD);
+
+    gl.drawArrays(gl.POINTS, 0, numPoints);
+  }
+
+  endFrame(): void {
+    this.readIndex = (this.readIndex + 1) % 2;
+    this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
+    this.gl.disable(this.gl.BLEND);
+  }
+
+  getTexture(): WebGLTexture {
+    if (!this.textures) throw new Error('AccumulatePass not initialized');
+    return this.textures[this.readIndex];
+  }
+
+  clear(): void {
+    if (!this.fbos) return;
+    const gl = this.gl;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbos[0]);
     gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbos[1]);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
-  render(_positionBuffer: WebGLBuffer, _numPoints: number, _decay: number): void {
-    // TODO: Implement accumulation rendering
-    // 1. Bind current FBO
-    // 2. Apply decay by blending with previous frame
-    // 3. Enable additive blending
-    // 4. Render points
-    // 5. Swap textures
-  }
-
-  getCurrentTexture(): WebGLTexture {
-    return this.textures![this.currentTexture];
-  }
-
-  clear(): void {
-    if (this.fbos) {
-      this.clearTexture(this.fbos[0]);
-      this.clearTexture(this.fbos[1]);
+  dispose(): void {
+    this.disposeTextures();
+    if (this.decayProgram) {
+      this.gl.deleteProgram(this.decayProgram);
+      this.decayProgram = null;
     }
   }
 
-  resize(width: number, height: number): void {
-    this.destroy();
-    this.init(width, height);
+  private init(): void {
+    this.createDecayProgram();
+    this.createTargets();
   }
 
-  destroy(): void {
+  private createDecayProgram(): void {
     const gl = this.gl;
-    
+    this.decayProgram = createProgram(gl, {
+      vertexSource: `#version 300 es
+      const vec2 verts[3] = vec2[3](vec2(-1., -1.), vec2(3., -1.), vec2(-1., 3.));
+      out vec2 v_uv;
+      void main() {
+        vec2 p = verts[gl_VertexID];
+        v_uv = p * 0.5 + 0.5;
+        gl_Position = vec4(p, 0., 1.);
+      }`,
+      fragmentSource: `#version 300 es
+      precision highp float;
+      in vec2 v_uv;
+      out vec4 fragColor;
+      uniform sampler2D u_prev;
+      uniform float u_decay;
+      void main() {
+        fragColor = u_decay * texture(u_prev, v_uv);
+      }`,
+    });
+    this.uDecay = gl.getUniformLocation(this.decayProgram, 'u_decay');
+    this.uPrev = gl.getUniformLocation(this.decayProgram, 'u_prev');
+  }
+
+  private createTargets(): void {
+    const textures: [WebGLTexture, WebGLTexture] = [this.createTexture(), this.createTexture()];
+    const fbos: [WebGLFramebuffer, WebGLFramebuffer] = [this.createFbo(textures[0]), this.createFbo(textures[1])];
+    this.textures = textures;
+    this.fbos = fbos;
+    this.readIndex = 0;
+  }
+
+  private createTexture(): WebGLTexture {
+    const gl = this.gl;
+    const tex = gl.createTexture();
+    if (!tex) throw new Error('Failed to create accumulation texture');
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    const internalFormat = this.useFloat ? gl.RGBA16F : gl.RGBA8;
+    const format = gl.RGBA;
+    const type = this.useFloat ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
+    gl.texImage2D(gl.TEXTURE_2D, 0, internalFormat, this.width, this.height, 0, format, type, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    return tex;
+  }
+
+  private createFbo(tex: WebGLTexture): WebGLFramebuffer {
+    const gl = this.gl;
+    const fbo = gl.createFramebuffer();
+    if (!fbo) throw new Error('Failed to create accumulation FBO');
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+    if (status !== gl.FRAMEBUFFER_COMPLETE) {
+      throw new Error(`Accumulation FBO incomplete: ${status}`);
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return fbo;
+  }
+
+  private disposeTextures(): void {
     if (this.textures) {
-      gl.deleteTexture(this.textures[0]);
-      gl.deleteTexture(this.textures[1]);
+      this.gl.deleteTexture(this.textures[0]);
+      this.gl.deleteTexture(this.textures[1]);
+      this.textures = null;
     }
-    
     if (this.fbos) {
-      gl.deleteFramebuffer(this.fbos[0]);
-      gl.deleteFramebuffer(this.fbos[1]);
-    }
-    
-    if (this.program) {
-      gl.deleteProgram(this.program);
+      this.gl.deleteFramebuffer(this.fbos[0]);
+      this.gl.deleteFramebuffer(this.fbos[1]);
+      this.fbos = null;
     }
   }
 }

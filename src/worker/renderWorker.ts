@@ -2,6 +2,7 @@ import { detectCapabilities, logCapabilities } from '../engine/gl/capabilities';
 import { GLCapabilities, MainToWorkerMsg, Preset, WorkerToMainMsg } from '../engine/types';
 import { PostprocessPass } from '../engine/gl/postprocessPass';
 import { TransformFeedbackSim } from '../engine/gl/transformFeedbackSim';
+import { AccumulatePass } from '../engine/gl/accumulatePass';
 
 type RafHandle = number | null;
 
@@ -29,6 +30,7 @@ class RenderWorker {
   private pointSizeLoc: WebGLUniformLocation | null = null;
   private pointViewScaleLoc: WebGLUniformLocation | null = null;
   private pointViewOffsetLoc: WebGLUniformLocation | null = null;
+  private accumulate: AccumulatePass | null = null;
   private frameIndex = 0;
 
   init(msg: Extract<MainToWorkerMsg, { type: 'init' }>) {
@@ -58,6 +60,13 @@ class RenderWorker {
       this.postprocess = new PostprocessPass(gl);
       this.postprocess.resize(this.pixelWidth, this.pixelHeight);
 
+      const useFloat = !!(this.capabilities.hasColorBufferFloat && this.capabilities.hasFloatBlend);
+      this.accumulate = new AccumulatePass(gl, {
+        width: this.pixelWidth,
+        height: this.pixelHeight,
+        useFloat,
+      });
+
       this.sim = new TransformFeedbackSim(gl, {
         numPoints: this.preset.sim.numPoints,
         seed: this.preset.sim.seed,
@@ -73,10 +82,23 @@ class RenderWorker {
   }
 
   updatePreset(preset: Preset) {
+    const prev = this.preset;
+    const prevMaps = prev ? JSON.stringify(prev.maps) : '';
+    const nextMaps = JSON.stringify(preset.maps);
+    const structural =
+      !prev ||
+      prev.sim.numPoints !== preset.sim.numPoints ||
+      prev.sim.seed !== preset.sim.seed ||
+      prevMaps !== nextMaps ||
+      JSON.stringify(prev.view) !== JSON.stringify(preset.view);
+
     this.preset = preset;
     this.animationSpeed = this.computeAnimationSpeed();
     if (this.sim) {
       this.sim.setPreset(preset);
+    }
+    if (structural) {
+      this.resetAccumulation();
     }
   }
 
@@ -95,16 +117,14 @@ class RenderWorker {
       this.gl.viewport(0, 0, this.pixelWidth, this.pixelHeight);
     }
     this.postprocess?.resize(this.pixelWidth, this.pixelHeight);
-    // Draw once immediately to avoid a blank during rapid resize
-    if (!this.isPaused) {
-      this.render(performance.now());
-    }
+    this.accumulate?.resize(this.pixelWidth, this.pixelHeight);
   }
 
   dispose() {
     this.stopLoop();
     this.postprocess?.dispose();
     this.sim?.dispose();
+    this.accumulate?.dispose();
     if (this.pointProgram && this.gl) {
       this.gl.deleteProgram(this.pointProgram);
     }
@@ -137,45 +157,56 @@ class RenderWorker {
   }
 
   private render(time: number) {
-    if (!this.gl || !this.postprocess || !this.sim || !this.pointProgram) return;
+    if (!this.gl || !this.postprocess || !this.sim || !this.pointProgram || !this.accumulate) {
+      return;
+    }
     const gl = this.gl;
 
     gl.viewport(0, 0, this.pixelWidth, this.pixelHeight);
     gl.disable(gl.DEPTH_TEST);
-    gl.disable(gl.BLEND);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
     const exposure = this.preset?.render.exposure ?? 1.0;
     const gamma = this.preset?.render.gamma ?? 2.2;
+    const paletteId = this.paletteToId(this.preset?.render.palette ?? 'grayscale');
+    const invert = !!this.preset?.render.invert;
     const timeSec = (time * 0.001) * this.animationSpeed;
+
+    // Update simulation
+    this.sim.step(this.frameIndex++);
+
+    // Begin accumulation: decay previous frame into write target
+    this.accumulate.beginFrame(this.preset?.render.decay ?? 0.99);
+
+    // Render points additively into accumulation target
+    gl.useProgram(this.pointProgram);
+    const posLoc = gl.getAttribLocation(this.pointProgram, 'a_position');
+    if (posLoc < 0) return;
+    this.sim.bindForRender(posLoc);
+
+    if (this.pointColorLoc) gl.uniform3f(this.pointColorLoc, 1.0, 1.0, 1.0);
+    const viewScale = this.preset?.view?.scale ?? 1.0;
+    const viewOffset = this.preset?.view?.offset ?? { x: 0, y: 0 };
+    if (this.pointViewScaleLoc) gl.uniform2f(this.pointViewScaleLoc, viewScale, viewScale);
+    if (this.pointViewOffsetLoc) gl.uniform2f(this.pointViewOffsetLoc, viewOffset.x, viewOffset.y);
+    if (this.pointSizeLoc) gl.uniform1f(this.pointSizeLoc, 1.5);
+
+    if (this.frameIndex >= (this.preset?.sim.burnIn ?? 0)) {
+      this.accumulate.drawPoints(this.sim.getNumPoints(), 1.5);
+    }
+    this.accumulate.endFrame();
+
+    const densityTex = this.accumulate.getTexture();
     this.postprocess.render({
       timeSec,
       width: this.pixelWidth,
       height: this.pixelHeight,
       exposure,
       gamma,
+      paletteId,
+      invert,
+      densityTex,
     });
-
-    // Update simulation
-    this.sim.step(this.frameIndex++);
-
-    // Render points on top
-    gl.useProgram(this.pointProgram);
-    const posLoc = gl.getAttribLocation(this.pointProgram, 'a_position');
-    if (posLoc < 0) return;
-    this.sim.bindForRender(posLoc);
-
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-
-    if (this.pointColorLoc) gl.uniform3f(this.pointColorLoc, 1.0, 1.0, 1.0);
-    if (this.pointSizeLoc) gl.uniform1f(this.pointSizeLoc, 1.5);
-    const viewScale = this.preset?.view?.scale ?? 1.0;
-    const viewOffset = this.preset?.view?.offset ?? { x: 0, y: 0 };
-    if (this.pointViewScaleLoc) gl.uniform2f(this.pointViewScaleLoc, viewScale, viewScale);
-    if (this.pointViewOffsetLoc) gl.uniform2f(this.pointViewOffsetLoc, viewOffset.x, viewOffset.y);
-
-    gl.drawArrays(gl.POINTS, 0, this.sim.getNumPoints());
 
     gl.bindVertexArray(null);
   }
@@ -192,6 +223,60 @@ class RenderWorker {
   private computeAnimationSpeed(): number {
     // Tie the simple animation to preset values so preset updates are observable.
     return this.preset ? 0.5 + Math.min(1.5, Math.max(0.2, this.preset.render.decay)) : 1;
+  }
+
+  private paletteToId(p: string): number {
+    switch (p) {
+      case 'magma':
+        return 1;
+      case 'viridis':
+        return 2;
+      case 'turbo':
+        return 3;
+      default:
+        return 0;
+    }
+  }
+
+  resetAccumulation() {
+    this.frameIndex = 0;
+    this.accumulate?.clear();
+  }
+
+  fitView(bounds: { min: { x: number; y: number }; max: { x: number; y: number } }) {
+    if (!this.preset) return;
+    const width = bounds.max.x - bounds.min.x;
+    const height = bounds.max.y - bounds.min.y;
+    const cx = (bounds.max.x + bounds.min.x) * 0.5;
+    const cy = (bounds.max.y + bounds.min.y) * 0.5;
+    const margin = 1.2;
+    const scale = 2 / Math.max(width, height || 1e-6) / margin;
+    this.preset = {
+      ...this.preset,
+      view: {
+        scale,
+        offset: { x: -cx * scale, y: -cy * scale },
+      },
+    };
+  }
+
+  handleFitRequest(warmup: number) {
+    if (!this.sim || !this.preset) return;
+    for (let i = 0; i < warmup; i++) {
+      this.sim.step(this.frameIndex++);
+    }
+    const bounds = this.sim.sampleBounds(4096);
+    const prevView = this.preset.view;
+    this.fitView(bounds);
+    if (
+      !prevView ||
+      prevView.scale !== this.preset.view?.scale ||
+      prevView.offset.x !== this.preset.view?.offset.x ||
+      prevView.offset.y !== this.preset.view?.offset.y
+    ) {
+      this.resetAccumulation();
+      this.postMessage({ type: 'fitResult', view: this.preset.view! });
+    }
   }
 
   private initPointProgram() {
@@ -271,8 +356,14 @@ self.onmessage = (event: MessageEvent<MainToWorkerMsg>) => {
     case 'updatePreset':
       worker.updatePreset(msg.preset);
       break;
+    case 'fitView':
+      worker.handleFitRequest(msg.warmup);
+      break;
     case 'setPaused':
       worker.setPaused(msg.paused);
+      break;
+    case 'resetAccum':
+      worker['resetAccumulation']();
       break;
     case 'dispose':
       worker.dispose();

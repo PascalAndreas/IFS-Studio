@@ -49,6 +49,8 @@ export interface RenderParams {
   decay: number;        // Accumulation decay factor per frame (0-1)
   exposure: number;     // Brightness multiplier for display
   gamma: number;        // Gamma correction for display
+  palette: 'grayscale' | 'magma' | 'viridis' | 'turbo';
+  invert?: boolean;
 }
 
 /**
@@ -81,14 +83,16 @@ export function createDefaultPreset(): Preset {
   return {
     name: "Barnsley Fern (fit)",
     sim: {
-      numPoints: 80000,
-      burnIn: 0,
+      numPoints: 1_000_000,
+      burnIn: 5,
       seed: 42,
     },
     render: {
       decay: 0.99,
       exposure: 1.0,
-      gamma: 2.2,
+      gamma: 0.3,
+      palette: 'viridis',
+      invert: false,
     },
     view: {
       scale: 0.18,
@@ -161,8 +165,77 @@ export type MainToWorkerMsg =
   | { type: 'resize'; width: number; height: number; dpr: number }
   | { type: 'updatePreset'; preset: Preset }
   | { type: 'setPaused'; paused: boolean }
+  | { type: 'resetAccum' }
+  | { type: 'fitView'; warmup: number }
   | { type: 'dispose' };
 
 export type WorkerToMainMsg =
   | { type: 'ready'; capabilities: GLCapabilities }
-  | { type: 'error'; message: string; stack?: string };
+  | { type: 'error'; message: string; stack?: string }
+  | { type: 'fitResult'; view: { scale: number; offset: { x: number; y: number } } };
+
+export function normalizeProbabilities(maps: IFSMap[]): IFSMap[] {
+  const n = Math.min(maps.length, MAX_MAPS);
+  const result = maps.slice(0, n).map((m) => ({ ...m, warp: { ...m.warp }, affine: { ...m.affine } }));
+  let sum = 0;
+  for (let i = 0; i < result.length; i++) {
+    const p = Math.max(0, result[i].probability);
+    result[i].probability = p;
+    sum += p;
+  }
+  if (sum <= 0) {
+    const uniform = 1 / Math.max(1, result.length);
+    for (const m of result) m.probability = uniform;
+  } else {
+    for (const m of result) m.probability /= sum;
+  }
+  return result;
+}
+
+export function clampPreset(preset: Preset): Preset {
+  const safeNumber = (v: any, fallback: number) => (Number.isFinite(v) ? v : fallback);
+  const maps = normalizeProbabilities(
+    preset.maps.slice(0, MAX_MAPS).map((m) => ({
+      ...m,
+      probability: safeNumber(m.probability, 1),
+      affine: {
+        a11: safeNumber(m.affine.a11, 1),
+        a12: safeNumber(m.affine.a12, 0),
+        a21: safeNumber(m.affine.a21, 0),
+        a22: safeNumber(m.affine.a22, 1),
+        b1: safeNumber(m.affine.b1, 0),
+        b2: safeNumber(m.affine.b2, 0),
+      },
+      warp: {
+        enabled: !!m.warp.enabled,
+        a1: safeNumber(m.warp.a1, 0),
+        a2: safeNumber(m.warp.a2, 0),
+        a3: safeNumber(m.warp.a3, 0),
+        a4: safeNumber(m.warp.a4, 0),
+        k1: safeNumber(m.warp.k1, 1),
+        k2: safeNumber(m.warp.k2, 1),
+        k3: safeNumber(m.warp.k3, 1),
+        k4: safeNumber(m.warp.k4, 1),
+      },
+    }))
+  );
+
+  return {
+    ...preset,
+    sim: {
+      ...preset.sim,
+      numPoints: Math.round(Math.max(100, safeNumber(preset.sim.numPoints, 100000))),
+      burnIn: Math.max(0, Math.round(safeNumber(preset.sim.burnIn, 0))),
+      seed: Math.round(safeNumber(preset.sim.seed, 1)),
+    },
+    render: {
+      ...preset.render,
+      decay: Math.max(0, Math.min(1, safeNumber(preset.render.decay, 0.99))),
+      exposure: Math.max(0, safeNumber(preset.render.exposure, 1)),
+      gamma: Math.max(0.0001, safeNumber(preset.render.gamma, 2.2)),
+      palette: preset.render.palette,
+      invert: !!preset.render.invert,
+    },
+    maps,
+  };
+}

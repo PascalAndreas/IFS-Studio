@@ -6,6 +6,9 @@ export type PostprocessUniforms = {
   height: number;
   exposure: number;
   gamma: number;
+  paletteId: number;
+  invert: boolean;
+  densityTex: WebGLTexture;
 };
 
 export class PostprocessPass {
@@ -16,6 +19,9 @@ export class PostprocessPass {
   private uResolution: WebGLUniformLocation | null = null;
   private uExposure: WebGLUniformLocation | null = null;
   private uGamma: WebGLUniformLocation | null = null;
+  private uDensity: WebGLUniformLocation | null = null;
+  private uPaletteId: WebGLUniformLocation | null = null;
+  private uInvert: WebGLUniformLocation | null = null;
 
   constructor(gl: WebGL2RenderingContext) {
     this.gl = gl;
@@ -37,6 +43,11 @@ export class PostprocessPass {
     gl.uniform2f(this.uResolution, u.width, u.height);
     gl.uniform1f(this.uExposure, u.exposure);
     gl.uniform1f(this.uGamma, u.gamma);
+    gl.uniform1i(this.uPaletteId, u.paletteId);
+    gl.uniform1i(this.uInvert, u.invert ? 1 : 0);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, u.densityTex);
+    gl.uniform1i(this.uDensity, 0);
 
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
@@ -66,6 +77,9 @@ export class PostprocessPass {
     this.uResolution = gl.getUniformLocation(this.program, 'u_resolution');
     this.uExposure = gl.getUniformLocation(this.program, 'u_exposure');
     this.uGamma = gl.getUniformLocation(this.program, 'u_gamma');
+    this.uDensity = gl.getUniformLocation(this.program, 'u_density');
+    this.uPaletteId = gl.getUniformLocation(this.program, 'u_paletteId');
+    this.uInvert = gl.getUniformLocation(this.program, 'u_invert');
 
     this.vao = gl.createVertexArray();
     gl.bindVertexArray(this.vao);
@@ -104,28 +118,57 @@ export class PostprocessPass {
     uniform vec2 u_resolution;
     uniform float u_exposure;
     uniform float u_gamma;
+    uniform int u_paletteId;
+    uniform int u_invert;
+    uniform sampler2D u_density;
 
-    // Simple animated stripes and gradient mix
-    vec3 palette(vec3 c, float k) {
-      return c * (0.6 + 0.4 * sin(k));
+    vec3 paletteGrayscale(float t) {
+      return vec3(t);
+    }
+
+    vec3 paletteMagma(float t) {
+      t = clamp(t, 0.0, 1.0);
+      vec3 a = vec3(0.0014, 0.0005, 0.0139);
+      vec3 b = vec3(2.165, 1.559, 0.777);
+      vec3 tvec = vec3(t);
+      return pow(a + b * pow(tvec, vec3(0.278, 0.365, 0.580)), vec3(1.2));
+    }
+
+    vec3 paletteViridis(float t) {
+      t = clamp(t, 0.0, 1.0);
+      vec3 a = vec3(0.280, 0.487, 0.738);
+      vec3 b = vec3(0.720, 0.349, 0.200);
+      return clamp(a + b * vec3(t), 0.0, 1.0);
+    }
+
+    vec3 paletteTurbo(float t) {
+      const vec4 c0 = vec4(0.13572138, 4.61539260, -42.66032258, 132.13108234);
+      const vec4 c1 = vec4(0.09140261, 2.19418839, 4.84296658, -14.18503333);
+      const vec4 c2 = vec4(0.10667330, 1.82860857, 0.27641268, -0.18533632);
+      const vec4 c3 = vec4(0.41092694, -5.68919500, 10.44085981, -5.87192550);
+      const vec4 c4 = vec4(-0.22977654, 4.13828604, -4.23751394, 1.48401649);
+      t = clamp(t, 0.0, 1.0);
+      vec4 v = vec4(1.0, t, t * t, t * t * t);
+      vec3 col = vec3(dot(c0, v), dot(c1, v), dot(c2, v)) + vec3(dot(c3, v), dot(c4, v), 0.0);
+      return clamp(col, 0.0, 1.0);
+    }
+
+    vec3 getPalette(int id, float t) {
+      if (id == 1) return paletteMagma(t);
+      if (id == 2) return paletteViridis(t);
+      if (id == 3) return paletteTurbo(t);
+      return paletteGrayscale(t);
     }
 
     void main() {
-      vec2 uv = v_uv;
-      vec2 p = (uv * u_resolution) / min(u_resolution.x, u_resolution.y);
-      float t = u_time * 0.8;
-
-      float stripes = 0.5 + 0.5 * sin(10.0 * uv.x + t * 2.0);
-      float waves = 0.5 + 0.5 * sin(8.0 * uv.y - t * 1.6);
-      float radial = length(uv - 0.5);
-
-      vec3 base = mix(vec3(0.1, 0.2, 0.4), vec3(0.8, 0.7, 0.4), uv.y);
-      vec3 color = base + 0.2 * palette(vec3(0.3, 0.8, 0.6), stripes) + 0.15 * waves;
-      color *= exp(-2.5 * radial);
-
-      // Apply simple exposure and gamma
-      color = pow(color * u_exposure, vec3(1.0 / max(0.0001, u_gamma)));
-
+      float d = texture(u_density, v_uv).r;
+      float v = log(1.0 + u_exposure * d);
+      v = v / (v + 1.0);
+      v = pow(clamp(v, 0.0, 1.0), 1.0 / max(0.0001, u_gamma));
+      if (u_invert == 1) {
+        v = 1.0 - v;
+      }
+      vec3 color = getPalette(u_paletteId, v);
       fragColor = vec4(color, 1.0);
     }
     `;

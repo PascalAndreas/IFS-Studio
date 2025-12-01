@@ -101,6 +101,34 @@ export class TransformFeedbackSim {
     return this.params.numPoints;
   }
 
+  sampleBounds(maxSamples: number): { min: { x: number; y: number }; max: { x: number; y: number } } {
+    if (!this.buffers) {
+      return { min: { x: -1, y: -1 }, max: { x: 1, y: 1 } };
+    }
+    const gl = this.gl;
+    const samples = Math.min(maxSamples, this.params.numPoints);
+    const array = new Float32Array(samples * 2);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers[this.readIndex]);
+    gl.getBufferSubData(gl.ARRAY_BUFFER, 0, array);
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    for (let i = 0; i < samples; i++) {
+      const x = array[i * 2];
+      const y = array[i * 2 + 1];
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+    if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+      return { min: { x: -1, y: -1 }, max: { x: 1, y: 1 } };
+    }
+    return { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } };
+  }
+
   dispose(): void {
     this.disposeBuffers();
     if (this.program) {
@@ -299,11 +327,8 @@ export class TransformFeedbackSim {
         p.y += a.z * sin(k.z * p.y) + a.w * cos(k.w * p.x);
       }
 
-      // Mild damping to keep the cloud from exploding while letting it roam
-      p *= 0.995;
-
-      // Safety reset
-      if (any(isnan(p)) || length(p) > 10.0) {
+      // Safety reset if NaN only
+      if (any(isnan(p))) {
         float r1 = rand(uvec3(uint(gl_VertexID) + 17u, u_frame, u_seed));
         float r2 = rand(uvec3(uint(gl_VertexID) + 31u, u_frame, u_seed));
         p = vec2(r1 - 0.5, r2 - 0.5) * 0.05;

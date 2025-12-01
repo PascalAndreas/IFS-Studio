@@ -2,12 +2,14 @@
  * Control panel component - left sidebar with all controls
  */
 
-import { Preset } from '../engine/types';
+import { Preset, MAX_MAPS, clampPreset, IFSMap } from '../engine/types';
 
 interface ControlPanelProps {
   preset: Preset;
   onPresetChange: (preset: Preset) => void;
   onRandomize: () => void;
+  onMutate: () => void;
+  onFitView: () => void;
   onReset: () => void;
   onPause: () => void;
   onPlay: () => void;
@@ -21,20 +23,58 @@ export function ControlPanel({
   onPresetChange,
   onRandomize,
   onReset,
+  onMutate,
+  onFitView,
   onPause,
   onPlay,
   isPaused,
   onExport,
   onImport,
 }: ControlPanelProps) {
-  const handleNumberChange = (path: string[], value: number) => {
-    const newPreset = JSON.parse(JSON.stringify(preset));
-    let obj: any = newPreset;
-    for (let i = 0; i < path.length - 1; i++) {
-      obj = obj[path[i]];
-    }
-    obj[path[path.length - 1]] = value;
-    onPresetChange(newPreset);
+  const applyPreset = (mutator: (p: Preset) => Preset) => {
+    const next = mutator(JSON.parse(JSON.stringify(preset)));
+    onPresetChange(clampPreset(next));
+  };
+
+  const handleValueChange = (path: (string | number)[], value: any) => {
+    applyPreset((p) => {
+      let obj: any = p;
+      for (let i = 0; i < path.length - 1; i++) {
+        obj = obj[path[i] as any];
+      }
+      obj[path[path.length - 1] as any] = value;
+      return p;
+    });
+  };
+
+  const defaultMap = (): IFSMap => ({
+    probability: 1,
+    affine: { a11: 0.5, a12: 0, a21: 0, a22: 0.5, b1: 0, b2: 0 },
+    warp: { enabled: false, a1: 0, a2: 0, a3: 0, a4: 0, k1: 1, k2: 1, k3: 1, k4: 1 },
+  });
+
+  const handleAddMap = () => {
+    if (preset.maps.length >= MAX_MAPS) return;
+    applyPreset((p) => {
+      p.maps.push(defaultMap());
+      return p;
+    });
+  };
+
+  const handleRemoveMap = (idx: number) => {
+    applyPreset((p) => {
+      p.maps.splice(idx, 1);
+      return p;
+    });
+  };
+
+  const handleDuplicateMap = (idx: number) => {
+    if (preset.maps.length >= MAX_MAPS) return;
+    applyPreset((p) => {
+      const copy = JSON.parse(JSON.stringify(p.maps[idx])) as IFSMap;
+      p.maps.splice(idx + 1, 0, copy);
+      return p;
+    });
   };
 
   return (
@@ -59,7 +99,7 @@ export function ControlPanel({
           <input
             type="number"
             value={preset.sim.seed}
-            onChange={(e) => handleNumberChange(['sim', 'seed'], parseInt(e.target.value))}
+            onChange={(e) => handleValueChange(['sim', 'seed'], parseInt(e.target.value))}
             style={inputStyle}
           />
         </div>
@@ -69,7 +109,7 @@ export function ControlPanel({
           <input
             type="number"
             value={preset.sim.numPoints}
-            onChange={(e) => handleNumberChange(['sim', 'numPoints'], parseInt(e.target.value))}
+            onChange={(e) => handleValueChange(['sim', 'numPoints'], parseInt(e.target.value))}
             style={inputStyle}
           />
         </div>
@@ -79,7 +119,7 @@ export function ControlPanel({
           <input
             type="number"
             value={preset.sim.burnIn}
-            onChange={(e) => handleNumberChange(['sim', 'burnIn'], parseInt(e.target.value))}
+            onChange={(e) => handleValueChange(['sim', 'burnIn'], parseInt(e.target.value))}
             style={inputStyle}
           />
         </div>
@@ -95,7 +135,7 @@ export function ControlPanel({
             type="number"
             step="0.001"
             value={preset.render.decay}
-            onChange={(e) => handleNumberChange(['render', 'decay'], parseFloat(e.target.value))}
+            onChange={(e) => handleValueChange(['render', 'decay'], parseFloat(e.target.value))}
             style={inputStyle}
           />
         </div>
@@ -106,7 +146,7 @@ export function ControlPanel({
             type="number"
             step="0.1"
             value={preset.render.exposure}
-            onChange={(e) => handleNumberChange(['render', 'exposure'], parseFloat(e.target.value))}
+            onChange={(e) => handleValueChange(['render', 'exposure'], parseFloat(e.target.value))}
             style={inputStyle}
           />
         </div>
@@ -117,9 +157,35 @@ export function ControlPanel({
             type="number"
             step="0.1"
             value={preset.render.gamma}
-            onChange={(e) => handleNumberChange(['render', 'gamma'], parseFloat(e.target.value))}
+            onChange={(e) => handleValueChange(['render', 'gamma'], parseFloat(e.target.value))}
             style={inputStyle}
           />
+        </div>
+
+        <div style={{ marginBottom: '8px' }}>
+          <label>Palette</label>
+          <select
+            value={preset.render.palette}
+            onChange={(e) => handleValueChange(['render', 'palette'], e.target.value)}
+            style={inputStyle}
+          >
+            <option value="grayscale">Grayscale</option>
+            <option value="magma">Magma</option>
+            <option value="viridis">Viridis</option>
+            <option value="turbo">Turbo</option>
+          </select>
+        </div>
+
+        <div style={{ marginBottom: '8px' }}>
+          <label>
+            <input
+              type="checkbox"
+              checked={!!preset.render.invert}
+              onChange={(e) => handleValueChange(['render', 'invert'], e.target.checked)}
+              style={{ marginRight: '6px' }}
+            />
+            Invert
+          </label>
         </div>
       </section>
 
@@ -133,6 +199,12 @@ export function ControlPanel({
         </button>
         <button onClick={onRandomize} style={buttonStyle}>
           🎲 Randomize
+        </button>
+        <button onClick={onMutate} style={buttonStyle}>
+          ✨ Mutate
+        </button>
+        <button onClick={onFitView} style={buttonStyle}>
+          📐 Fit View
         </button>
       </section>
 
@@ -155,14 +227,112 @@ export function ControlPanel({
         </label>
       </section>
 
-      {/* TODO: Map Editor List */}
+      {/* Map Editor */}
       <section style={{ marginTop: '24px' }}>
         <h2 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#aaa' }}>
-          Maps ({preset.maps.length})
+          Maps ({preset.maps.length}) | Prob sum: {preset.maps.reduce((s, m) => s + m.probability, 0).toFixed(2)}
         </h2>
-        <div style={{ color: '#666' }}>
-          [Map editor TODO]
-        </div>
+        <button
+          onClick={() => handleAddMap()}
+          disabled={preset.maps.length >= 8}
+          style={{ ...buttonStyle, marginBottom: '12px' }}
+        >
+          ➕ Add Map
+        </button>
+        {preset.maps.map((map, idx) => (
+          <details key={idx} open style={{ marginBottom: '12px', border: '1px solid #333', borderRadius: '6px', padding: '8px' }}>
+            <summary style={{ cursor: 'pointer', outline: 'none' }}>
+              Map {idx + 1}: p={map.probability.toFixed(3)} warp={map.warp.enabled ? 'on' : 'off'}
+            </summary>
+            <div style={{ marginTop: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                <button onClick={() => handleDuplicateMap(idx)} style={{ ...buttonStyle, marginBottom: 0, flex: 1 }}>
+                  Duplicate
+                </button>
+                <button onClick={() => handleRemoveMap(idx)} style={{ ...buttonStyle, marginBottom: 0, flex: 1 }}>
+                  Remove
+                </button>
+              </div>
+              <label>Probability</label>
+              <input
+                type="number"
+                step="0.01"
+                value={map.probability}
+                onChange={(e) => handleValueChange(['maps', idx, 'probability'], parseFloat(e.target.value))}
+                style={inputStyle}
+              />
+              <div style={{ marginTop: '8px', marginBottom: '4px' }}>Affine A</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px', marginBottom: '8px' }}>
+                {(['a11', 'a12', 'a21', 'a22'] as const).map((key) => (
+                  <input
+                    key={key}
+                    type="number"
+                    step="0.01"
+                    value={(map.affine as any)[key]}
+                    onChange={(e) => handleValueChange(['maps', idx, 'affine', key], parseFloat(e.target.value))}
+                    style={inputStyle}
+                    placeholder={key}
+                  />
+                ))}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px', marginBottom: '8px' }}>
+                {(['b1', 'b2'] as const).map((key) => (
+                  <input
+                    key={key}
+                    type="number"
+                    step="0.01"
+                    value={(map.affine as any)[key]}
+                    onChange={(e) => handleValueChange(['maps', idx, 'affine', key], parseFloat(e.target.value))}
+                    style={inputStyle}
+                    placeholder={key}
+                  />
+                ))}
+              </div>
+
+              <label>
+                <input
+                  type="checkbox"
+                  checked={map.warp.enabled}
+                  onChange={(e) => handleValueChange(['maps', idx, 'warp', 'enabled'], e.target.checked)}
+                  style={{ marginRight: '6px' }}
+                />
+                Warp enabled
+              </label>
+              {map.warp.enabled && (
+                <div style={{ marginTop: '8px' }}>
+                  <div style={{ marginBottom: '4px' }}>Warp A (a1..a4)</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginBottom: '8px' }}>
+                    {(['a1', 'a2', 'a3', 'a4'] as const).map((key) => (
+                      <input
+                        key={key}
+                        type="number"
+                        step="0.01"
+                        value={(map.warp as any)[key]}
+                        onChange={(e) => handleValueChange(['maps', idx, 'warp', key], parseFloat(e.target.value))}
+                        style={inputStyle}
+                        placeholder={key}
+                      />
+                    ))}
+                  </div>
+                  <div style={{ marginBottom: '4px' }}>Warp K (k1..k4)</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
+                    {(['k1', 'k2', 'k3', 'k4'] as const).map((key) => (
+                      <input
+                        key={key}
+                        type="number"
+                        step="0.1"
+                        value={(map.warp as any)[key]}
+                        onChange={(e) => handleValueChange(['maps', idx, 'warp', key], parseFloat(e.target.value))}
+                        style={inputStyle}
+                        placeholder={key}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </details>
+        ))}
       </section>
     </div>
   );
@@ -192,4 +362,3 @@ const buttonStyle: React.CSSProperties = {
   fontSize: '13px',
   textAlign: 'left',
 };
-
