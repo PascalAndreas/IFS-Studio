@@ -39,7 +39,7 @@ src/
     types.ts      # preset (maps/view), sim/render params, messaging
   shaders/        # GLSL sources (TF sim, points, accumulation, postprocess)
   worker/         # renderWorker.ts (loop + messaging)
-  ui/             # Canvas bridge, ControlPanel, preset utils
+  ui/             # Canvas bridge, overlay panels, preset utils
   App.tsx         # state wiring (preset/sim/render)
 ```
 
@@ -53,6 +53,7 @@ src/
 - Screenshots for docs.
 - Infinite zoom: simulate only visible region, spawn/retire particles as view changes.
 - UI overhaul: styling/UX polish, slider debouncing/feedback.
+- OffscreenCanvas fallback for browsers without support.
 - Postprocess rework: adaptive tone mapping, better dynamic range.
 - Mapping UI: richer preset library, save slots, styled controls.
 - By-map coloring (RGB accumulation) to highlight structure.
