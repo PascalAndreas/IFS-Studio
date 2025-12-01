@@ -141,6 +141,15 @@ export function MapsPanel({ preset, onPresetChange, theme }: MapsPanelProps) {
     fontFamily: theme.font,
     cursor: 'pointer',
   };
+  const iconButton: React.CSSProperties = {
+    ...smallButton,
+    width: 32,
+    height: 28,
+    padding: `${theme.spacing.xs - 2}px`,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  };
 
   const saveCurrentToLibrary = () => {
     const entry: LibraryEntry = { id: crypto.randomUUID(), name: presetName || 'Untitled', preset: clampPreset({ ...preset, name: presetName }) };
@@ -162,53 +171,63 @@ export function MapsPanel({ preset, onPresetChange, theme }: MapsPanelProps) {
   const probSum = rawProbs.reduce((acc, v) => acc + (Number.isFinite(v) ? v : 0), 0);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'row', gap: theme.spacing.md, alignItems: 'flex-start', position: 'relative' }}>
-      <div style={{ minWidth: 200, display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
+    <div style={{ display: 'flex', flexDirection: 'row', gap: theme.spacing.md, alignItems: 'flex-start', position: 'relative', maxHeight: '90vh' }}>
+      <div style={{ minWidth: 220, display: 'flex', flexDirection: 'column', gap: theme.spacing.sm, maxHeight: '90vh', overflow: 'hidden' }}>
         <div style={{ color: theme.colors.text, fontSize: 13, fontWeight: 600 }}>Library</div>
-        <button style={smallButton} onClick={saveCurrentToLibrary}>Save Current</button>
-        {library.map((entry) => (
-          <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
-            <button style={{ ...smallButton, flex: 1 }} onClick={() => loadFromLibrary(entry)}>
-              {entry.name}
-            </button>
-            <button style={smallButton} onClick={() => deleteEntry(entry.id)}>✕</button>
-          </div>
-        ))}
-      </div>
+        <div style={{ flex: 1, overflowY: 'auto', paddingRight: 2 }}>
+          {library.map((entry) => (
+            <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, marginBottom: theme.spacing.xs }}>
+              <button style={{ ...smallButton, flex: 1 }} onClick={() => loadFromLibrary(entry)}>
+                {entry.name}
+              </button>
+              <button style={iconButton} onClick={() => deleteEntry(entry.id)}>✕</button>
+            </div>
+          ))}
+        </div>
 
-      <div style={{ minWidth: 200, display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
-        <div style={{ color: theme.colors.text, fontSize: 13, fontWeight: 600 }}>Name</div>
-        <input
-          type="text"
-          value={presetName}
-          onChange={(e) => setPresetName(e.target.value)}
-          onBlur={() => { internalPresetChange.current = true; onPresetChange(clampPreset({ ...preset, name: presetName })); }}
-          style={inputStyle}
-        />
-        <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, color: theme.colors.muted, fontSize: 12 }}>
-          <span>Prob sum:</span>
-          <span style={{ color: Math.abs(probSum - 1) < 1e-3 ? theme.colors.accent : theme.colors.text }}>
-            {probSum.toFixed(2)}
-          </span>
-          <button style={{ ...smallButton, padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`, marginLeft: 'auto' }} onClick={normalizeProbabilities} disabled={!Number.isFinite(probSum) || rawProbs.length === 0}>
-            Normalize
+        <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, marginTop: 'auto' }}>
+          <div style={{ color: theme.colors.text, fontSize: 13, fontWeight: 600 }}>Current Preset</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+            <input
+              type="text"
+              value={presetName}
+              onChange={(e) => setPresetName(e.target.value)}
+              onBlur={() => { internalPresetChange.current = true; onPresetChange(clampPreset({ ...preset, name: presetName })); }}
+              style={{ ...inputStyle, marginTop: 0 }}
+            />
+            <button
+              style={iconButton}
+              onClick={saveCurrentToLibrary}
+              title="Save current preset"
+            >
+              💾
+            </button>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, color: theme.colors.muted, fontSize: 12 }}>
+            <span>Prob sum:</span>
+            <span style={{ color: Math.abs(probSum - 1) < 1e-3 ? theme.colors.accent : theme.colors.text }}>
+              {probSum.toFixed(2)}
+            </span>
+            <button style={{ ...smallButton, padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`, marginLeft: 'auto' }} onClick={normalizeProbabilities} disabled={!Number.isFinite(probSum) || rawProbs.length === 0}>
+              Normalize
+            </button>
+          </div>
+          <ToggleSwitch checked={!showRaw} onChange={(v) => setShowRaw(!v)} label={showRaw ? 'Raw Mode' : 'Play Mode'} theme={theme} />
+          <button
+            onClick={() => {
+              if (preset.maps.length < MAX_MAPS) {
+                const nextProbs = [...rawProbs, 1];
+                applyPreset((p) => { p.maps.push(defaultMap()); return p; }, nextProbs);
+                setGains((g) => [...g, { g1: 1, g2: 1, b: 1 }]);
+                setRawProbs(nextProbs);
+              }
+            }}
+            style={smallButton}
+            disabled={preset.maps.length >= MAX_MAPS}
+          >
+            ➕ Add
           </button>
         </div>
-          <ToggleSwitch checked={!showRaw} onChange={(v) => setShowRaw(!v)} label={showRaw ? 'Raw Mode' : 'Play Mode'} theme={theme} />
-        <button
-          onClick={() => {
-            if (preset.maps.length < MAX_MAPS) {
-              const nextProbs = [...rawProbs, 1];
-              applyPreset((p) => { p.maps.push(defaultMap()); return p; }, nextProbs);
-              setGains((g) => [...g, { g1: 1, g2: 1, b: 1 }]);
-              setRawProbs(nextProbs);
-            }
-          }}
-          style={smallButton}
-          disabled={preset.maps.length >= MAX_MAPS}
-        >
-          ➕ Add
-        </button>
       </div>
 
       <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', gap: theme.spacing.md }}>

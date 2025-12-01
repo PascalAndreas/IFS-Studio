@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Theme } from '../theme';
 
 interface VectorPadProps {
@@ -6,12 +6,14 @@ interface VectorPadProps {
   onChange: (v: { x: number; y: number }) => void;
   size?: number;
   theme: Theme;
+  label?: string;
 }
 
-export function VectorPad({ value, onChange, size = 140, theme }: VectorPadProps) {
+export function VectorPad({ value, onChange, size = 140, theme, label }: VectorPadProps) {
   const clamp = (v: number) => Math.max(-1, Math.min(1, v));
   const current = useRef<{ x: number; y: number }>({ ...value });
   const dragged = useRef(false);
+  const [showTip, setShowTip] = useState(false);
   current.current = value;
   return (
     <div
@@ -22,7 +24,7 @@ export function VectorPad({ value, onChange, size = 140, theme }: VectorPadProps
         background: theme.colors.iconBg,
         border: theme.border,
         borderRadius: 0,
-        overflow: 'hidden',
+        overflow: 'visible',
         boxShadow: theme.shadow,
         touchAction: 'none',
         userSelect: 'none',
@@ -63,6 +65,11 @@ export function VectorPad({ value, onChange, size = 140, theme }: VectorPadProps
         const ty = 1 - ((e.clientY - rect.top) / rect.height) * 2;
         onChange({ x: clamp(tx), y: clamp(ty) });
       }}
+      onDoubleClick={() => {
+        const next = { x: clamp((Math.random() * 2) - 1), y: clamp((Math.random() * 2) - 1) };
+        current.current = next;
+        onChange(next);
+      }}
       onWheel={(e) => {
         e.preventDefault();
         const delta = (-e.deltaY / 400) * (e.shiftKey ? 1 : 1);
@@ -75,6 +82,39 @@ export function VectorPad({ value, onChange, size = 140, theme }: VectorPadProps
     >
       <div style={{ position: 'absolute', top: 4, left: 6, color: theme.colors.muted, fontSize: 10 }}>
         ({value.x.toFixed(2)}, {value.y.toFixed(2)})
+      </div>
+      {label && (
+        <div style={{ position: 'absolute', bottom: 4, left: 6, color: theme.colors.muted, fontSize: 10 }}>
+          {label}
+        </div>
+      )}
+      <div
+        style={{ position: 'absolute', bottom: 4, right: 6, width: 16, height: 16, borderRadius: '50%', border: `1px solid ${theme.colors.muted}`, color: theme.colors.muted, fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'help' }}
+        onMouseEnter={() => setShowTip(true)}
+        onMouseLeave={() => setShowTip(false)}
+      >
+        ?
+        {showTip && (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: '120%',
+              right: 0,
+              minWidth: 180,
+              padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
+              borderRadius: theme.radius,
+              background: theme.colors.panelBg,
+              border: theme.border,
+              color: theme.colors.text,
+              boxShadow: theme.shadow,
+              fontSize: 11,
+              zIndex: 10,
+              whiteSpace: 'normal',
+            }}
+          >
+            Click/drag (Shift = fine), double-click random, scroll for y and Shift+scroll for x.
+          </div>
+        )}
       </div>
       <div
         style={{

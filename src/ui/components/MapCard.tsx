@@ -44,9 +44,9 @@ export function MapCard({
   onProbabilityChange,
 }: MapCardProps) {
   const vectorRows = [
-    { label: 'g1', keys: ['a11', 'a21'] as const, vec: { x: map.affine.a11, y: map.affine.a21 }, gain: gains.g1 ?? 1, gainKey: 'g1' as const },
-    { label: 'g2', keys: ['a12', 'a22'] as const, vec: { x: map.affine.a12, y: map.affine.a22 }, gain: gains.g2 ?? 1, gainKey: 'g2' as const },
-    { label: 'b', keys: ['b1', 'b2'] as const, vec: { x: map.affine.b1, y: map.affine.b2 }, gain: gains.b ?? 1, gainKey: 'b' as const },
+    { label: 'A_x', stateKey: 'g1' as const, keys: ['a11', 'a21'] as const, vec: { x: map.affine.a11, y: map.affine.a21 }, gain: gains.g1 ?? 1, gainKey: 'g1' as const },
+    { label: 'A_y', stateKey: 'g2' as const, keys: ['a12', 'a22'] as const, vec: { x: map.affine.a12, y: map.affine.a22 }, gain: gains.g2 ?? 1, gainKey: 'g2' as const },
+    { label: 'b', stateKey: 'b' as const, keys: ['b1', 'b2'] as const, vec: { x: map.affine.b1, y: map.affine.b2 }, gain: gains.b ?? 1, gainKey: 'b' as const },
   ];
 
   const warpAParams = ['a1', 'a2', 'a3', 'a4'] as const;
@@ -86,7 +86,7 @@ export function MapCard({
         gridTemplateRows: 'auto 1fr',
         gap: theme.spacing.sm,
         minWidth: 500,
-        maxWidth: 620,
+        maxWidth: 500,
         boxSizing: 'border-box',
         height: cardHeight,
       }}
@@ -110,13 +110,14 @@ export function MapCard({
           <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
             {vectorRows.map((row, i) => {
               const gain = row.gain;
-              const displayVec = (vectors as any)[row.label] as { x: number; y: number };
+              const displayVec = (vectors as any)[row.stateKey] as { x: number; y: number };
               return (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
                   <VectorPad
+                    label={row.label}
                     value={displayVec}
                     onChange={(v) => {
-                      setVectors((prev) => ({ ...prev, [row.label]: v }));
+                      setVectors((prev) => ({ ...prev, [row.stateKey]: v }));
                       updateAffineWithGain(row.keys, v, gain);
                     }}
                     size={120}
@@ -125,7 +126,7 @@ export function MapCard({
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: theme.spacing.xs }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
                       <Knob
-                        label={row.label === 'b' ? 'b gain' : row.label}
+                        label="Gain"
                         value={gain}
                         min={0}
                         max={2}
@@ -216,9 +217,9 @@ export function MapCard({
           <InfoTip helpKey="maps.warp" theme={theme} />
         </div>
         {map.warp.enabled && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, width: '100%' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs, width: '100%', minWidth: 0 }}>
             <div style={{ color: theme.colors.muted, fontSize: 12 }}>A</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: theme.spacing.xs }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: theme.spacing.xs, minWidth: 0 }}>
               {warpAParams.map((key) => (
                 <input
                   key={key}
@@ -226,13 +227,13 @@ export function MapCard({
                   step={0.01}
                   value={(map.warp as any)[key]}
                   onChange={(e) => onUpdate(['maps', index, 'warp', key], parseFloat(e.target.value || '0'))}
-                  style={{ ...inputStyle, marginTop: 0 }}
+                  style={{ ...inputStyle, marginTop: 0, width: '100%', minWidth: 0 }}
                   placeholder={key}
                 />
               ))}
             </div>
             <div style={{ color: theme.colors.muted, fontSize: 12, marginTop: theme.spacing.xs }}>K</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: theme.spacing.xs }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: theme.spacing.xs, minWidth: 0 }}>
               {warpKParams.map((key) => (
                 <input
                   key={key}
@@ -240,7 +241,7 @@ export function MapCard({
                   step={0.1}
                   value={(map.warp as any)[key]}
                   onChange={(e) => onUpdate(['maps', index, 'warp', key], parseFloat(e.target.value || '0'))}
-                  style={{ ...inputStyle, marginTop: 0 }}
+                  style={{ ...inputStyle, marginTop: 0, width: '100%', minWidth: 0 }}
                   placeholder={key}
                 />
               ))}
