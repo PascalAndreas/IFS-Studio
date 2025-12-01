@@ -1,24 +1,13 @@
+import { Theme } from './theme';
+
 interface AxisOverlaysProps {
   view: { scale: number; offset: { x: number; y: number } };
-  invert: boolean;
-  paletteId: number;
+  theme: Theme;
 }
 
-export function AxisOverlays({ view, invert, paletteId }: AxisOverlaysProps) {
-  const paletteMax = (id: number) => {
-    switch (id) {
-      case 1: // magma top
-        return '#f6d746';
-      case 2: // viridis top
-        return '#fde725';
-      case 3: // turbo top
-        return '#ff9400';
-      default:
-        return '#ffffff';
-    }
-  };
-  const tickColor = invert ? '#111' : paletteMax(paletteId);
-  const minorColor = invert ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.35)';
+export function AxisOverlays({ view, theme }: AxisOverlaysProps) {
+  const tickColor = theme.colors.accent;
+  const minorColor = theme.colors.muted;
 
   const computeTicks = (min: number, max: number) => {
     const range = Math.max(1e-6, max - min);
@@ -159,4 +148,3 @@ export function AxisOverlays({ view, invert, paletteId }: AxisOverlaysProps) {
     </>
   );
 }
-

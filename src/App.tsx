@@ -2,7 +2,7 @@
  * Main App component
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   Preset,
   SimParams,
@@ -15,15 +15,15 @@ import {
   clampRender,
 } from './engine/types';
 import { FIT_VIEW_WARMUP_ITERATIONS } from './engine/constants';
-import { ControlPanel } from './ui/ControlPanel';
 import { Canvas } from './ui/Canvas';
 import { mutatePreset, randomizePreset } from './ui/presetUtils';
+import { OverlayRoot } from './ui/overlay/OverlayRoot';
+import { buildTheme } from './ui/theme';
 
 function App() {
   const [preset, setPreset] = useState<Preset>(createDefaultPreset());
   const [sim, setSim] = useState<SimParams>(createDefaultSimParams());
   const [render, setRender] = useState<RenderParams>(createDefaultRenderParams());
-  const [isPaused, setIsPaused] = useState(false);
   const [resetTrigger, setResetTrigger] = useState(false);
   const [fitRequest, setFitRequest] = useState<{ version: number; warmup: number }>({ version: 0, warmup: 0 });
 
@@ -56,14 +56,6 @@ function App() {
 
   const handleResetComplete = useCallback(() => {
     setResetTrigger(false);
-  }, []);
-
-  const handlePause = useCallback(() => {
-    setIsPaused(true);
-  }, []);
-
-  const handlePlay = useCallback(() => {
-    setIsPaused(false);
   }, []);
 
   const handleExport = useCallback(() => {
@@ -107,15 +99,29 @@ function App() {
     setFitRequest((f) => ({ version: f.version + 1, warmup: 0 }));
   }, []);
 
+  const theme = useMemo(() => buildTheme(render.palette, !!render.invert), [render.palette, render.invert]);
+
   return (
-    <div style={{
-      display: 'flex',
-      width: '100vw',
-      height: '100vh',
-      overflow: 'hidden',
-      backgroundColor: '#000',
-    }}>
-      <ControlPanel
+    <div
+      style={{
+        position: 'relative',
+        width: '100vw',
+        height: '100vh',
+        overflow: 'hidden',
+        backgroundColor: '#000',
+      }}
+    >
+      <Canvas
+        preset={preset}
+        sim={sim}
+        render={render}
+        theme={theme}
+        onReset={resetTrigger}
+        resetComplete={handleResetComplete}
+        onViewChange={handleViewChange}
+        fitRequest={fitRequest}
+      />
+      <OverlayRoot
         preset={preset}
         sim={sim}
         render={render}
@@ -123,27 +129,13 @@ function App() {
         onSimChange={handleSimChange}
         onRenderChange={handleRenderChange}
         onRandomize={handleRandomize}
+        onMutate={handleMutate}
         onReset={handleReset}
-        onPause={handlePause}
-        onPlay={handlePlay}
-        isPaused={isPaused}
+        onFitView={handleFitView}
         onExport={handleExport}
         onImport={handleImport}
-        onMutate={handleMutate}
-        onFitView={handleFitView}
+        theme={theme}
       />
-      <div style={{ flex: 1, position: 'relative' }}>
-        <Canvas
-          preset={preset}
-          sim={sim}
-          render={render}
-          isPaused={isPaused}
-          onReset={resetTrigger}
-          resetComplete={handleResetComplete}
-          onViewChange={handleViewChange}
-          fitRequest={fitRequest}
-        />
-      </div>
     </div>
   );
 }

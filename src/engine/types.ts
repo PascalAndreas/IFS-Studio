@@ -199,52 +199,32 @@ export type WorkerToMainMsg =
   | { type: 'error'; message: string; stack?: string }
   | { type: 'fitResult'; view: { scale: number; offset: { x: number; y: number } } };
 
-export function normalizeProbabilities(maps: IFSMap[]): IFSMap[] {
-  const n = Math.min(maps.length, MAX_MAPS);
-  const result = maps.slice(0, n).map((m) => ({ ...m, warp: { ...m.warp }, affine: { ...m.affine } }));
-  let sum = 0;
-  for (let i = 0; i < result.length; i++) {
-    const p = Math.max(0, result[i].probability);
-    result[i].probability = p;
-    sum += p;
-  }
-  if (sum <= 0) {
-    const uniform = 1 / Math.max(1, result.length);
-    for (const m of result) m.probability = uniform;
-  } else {
-    for (const m of result) m.probability /= sum;
-  }
-  return result;
-}
-
 const safeNumber = (v: any, fallback: number) => (Number.isFinite(v) ? v : fallback);
 
 export function clampPreset(preset: Preset): Preset {
-  const maps = normalizeProbabilities(
-    preset.maps.slice(0, MAX_MAPS).map((m) => ({
-      ...m,
-      probability: safeNumber(m.probability, 1),
-      affine: {
-        a11: safeNumber(m.affine.a11, 1),
-        a12: safeNumber(m.affine.a12, 0),
-        a21: safeNumber(m.affine.a21, 0),
-        a22: safeNumber(m.affine.a22, 1),
-        b1: safeNumber(m.affine.b1, 0),
-        b2: safeNumber(m.affine.b2, 0),
-      },
-      warp: {
-        enabled: !!m.warp.enabled,
-        a1: safeNumber(m.warp.a1, 0),
-        a2: safeNumber(m.warp.a2, 0),
-        a3: safeNumber(m.warp.a3, 0),
-        a4: safeNumber(m.warp.a4, 0),
-        k1: safeNumber(m.warp.k1, 1),
-        k2: safeNumber(m.warp.k2, 1),
-        k3: safeNumber(m.warp.k3, 1),
-        k4: safeNumber(m.warp.k4, 1),
-      },
-    }))
-  );
+  const maps = preset.maps.slice(0, MAX_MAPS).map((m) => ({
+    ...m,
+    probability: safeNumber(m.probability, 1),
+    affine: {
+      a11: safeNumber(m.affine.a11, 1),
+      a12: safeNumber(m.affine.a12, 0),
+      a21: safeNumber(m.affine.a21, 0),
+      a22: safeNumber(m.affine.a22, 1),
+      b1: safeNumber(m.affine.b1, 0),
+      b2: safeNumber(m.affine.b2, 0),
+    },
+    warp: {
+      enabled: !!m.warp.enabled,
+      a1: safeNumber(m.warp.a1, 0),
+      a2: safeNumber(m.warp.a2, 0),
+      a3: safeNumber(m.warp.a3, 0),
+      a4: safeNumber(m.warp.a4, 0),
+      k1: safeNumber(m.warp.k1, 1),
+      k2: safeNumber(m.warp.k2, 1),
+      k3: safeNumber(m.warp.k3, 1),
+      k4: safeNumber(m.warp.k4, 1),
+    },
+  }));
 
   return {
     ...preset,

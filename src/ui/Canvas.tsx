@@ -1,26 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
-import { GLCapabilities, MainToWorkerMsg, Preset, WorkerToMainMsg, SimParams, RenderParams, paletteToId } from '../engine/types';
+import { MainToWorkerMsg, Preset, WorkerToMainMsg, SimParams, RenderParams } from '../engine/types';
 import { CONFIG_UPDATE_DEBOUNCE_MS } from '../engine/constants';
 import { AxisOverlays } from './AxisOverlays';
+import { Theme } from './theme';
 
 interface CanvasProps {
   preset: Preset;
   sim: SimParams;
   render: RenderParams;
-  isPaused: boolean;
+  theme: Theme;
   onReset: boolean;
   resetComplete: () => void;
   onViewChange: (view: { scale: number; offset: { x: number; y: number } }) => void;
   fitRequest: { version: number; warmup: number };
 }
 
-export function Canvas({ preset, sim, render, isPaused, onReset, resetComplete, onViewChange, fitRequest }: CanvasProps) {
+export function Canvas({ preset, sim, render, theme, onReset, resetComplete, onViewChange, fitRequest }: CanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const workerRef = useRef<Worker | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const offscreenRef = useRef<OffscreenCanvas | null>(null);
-  const [capabilities, setCapabilities] = useState<GLCapabilities | null>(null);
   const [error, setError] = useState<string | null>(null);
   const updateTimer = useRef<number | null>(null);
   const viewRef = useRef<{ scale: number; offset: { x: number; y: number } }>({
@@ -64,7 +64,6 @@ export function Canvas({ preset, sim, render, isPaused, onReset, resetComplete, 
       const msg = e.data;
       switch (msg.type) {
         case 'ready':
-          setCapabilities(msg.capabilities);
           setError(null);
           break;
         case 'error':
@@ -137,16 +136,6 @@ export function Canvas({ preset, sim, render, isPaused, onReset, resetComplete, 
     lastFitVersion.current = fitRequest.version;
     workerRef.current.postMessage({ type: 'fitView', warmup: fitRequest.warmup } satisfies MainToWorkerMsg);
   }, [fitRequest]);
-
-  useEffect(() => {
-    if (workerRef.current) {
-      const msg: MainToWorkerMsg = {
-        type: 'setPaused',
-        paused: isPaused,
-      };
-      workerRef.current.postMessage(msg);
-    }
-  }, [isPaused]);
 
   useEffect(() => {
     if (onReset) {
@@ -270,25 +259,7 @@ export function Canvas({ preset, sim, render, isPaused, onReset, resetComplete, 
           display: 'block',
         }}
       />
-      <AxisOverlays view={viewRef.current} invert={!!render.invert} paletteId={paletteToId(render.palette)} />
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 8,
-          left: 8,
-          padding: '4px 8px',
-          backgroundColor: 'rgba(0,0,0,0.4)',
-          color: '#d0d0d0',
-          fontFamily: 'monospace',
-          fontSize: '12px',
-          borderRadius: '4px',
-          pointerEvents: 'none',
-        }}
-      >
-        {capabilities
-          ? `GPU: OK (${capabilities.supportedExtensions.slice(0, 3).join(', ') || 'no extensions'})`
-          : 'GPU: initializing...'}
-      </div>
+      <AxisOverlays view={viewRef.current} theme={theme} />
     </div>
   );
 }

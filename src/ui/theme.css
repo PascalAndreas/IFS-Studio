@@ -1,0 +1,13 @@
+:root {
+  --ui-font: 'IBM Plex Mono', 'Space Grotesk', 'SFMono-Regular', 'JetBrains Mono', monospace;
+}
+
+body {
+  color: #eaeaea;
+  background: #000;
+}
+
+.ui-card {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}

@@ -1,10 +1,23 @@
 import { IFSMap, MAX_MAPS, Preset, clampPreset, clampSim, clampRender, SimParams, RenderParams } from '../engine/types';
+import { MAX_FRO_NORM } from '../engine/constants';
 
 const rand = (min: number, max: number) => Math.random() * (max - min) + min;
 const sampleProbabilities = (n: number) => {
   const arr = Array.from({ length: n }, () => Math.max(0.0001, Math.random()));
   const sum = arr.reduce((s, v) => s + v, 0);
   return arr.map((v) => v / sum);
+};
+
+const clampFro = (map: IFSMap): IFSMap => {
+  const fro = Math.sqrt(map.affine.a11 ** 2 + map.affine.a12 ** 2 + map.affine.a21 ** 2 + map.affine.a22 ** 2);
+  if (fro > MAX_FRO_NORM) {
+    const s = MAX_FRO_NORM / fro;
+    map.affine.a11 *= s;
+    map.affine.a12 *= s;
+    map.affine.a21 *= s;
+    map.affine.a22 *= s;
+  }
+  return map;
 };
 
 export function randomizePreset(base: { sim: SimParams; render: RenderParams }): { preset: Preset; sim: SimParams; render: RenderParams } {
@@ -50,7 +63,7 @@ export function randomizePreset(base: { sim: SimParams; render: RenderParams }):
       scale: 0.18,
       offset: { x: 0, y: -0.9 },
     },
-    maps,
+    maps: maps.map(clampFro),
   });
 
   return {
@@ -88,7 +101,7 @@ export function mutatePreset(p: { preset: Preset; sim: SimParams; render: Render
         k4: m.warp.k4 + warpJitter(),
       },
     };
-  });
+  }).map(clampFro);
 
   return {
     preset: clampPreset(next),
