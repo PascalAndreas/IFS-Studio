@@ -18,6 +18,7 @@ export const DEFAULT_EXPOSURE = 1.0;
 export const DEFAULT_GAMMA = 0.3;
 export const DEFAULT_DECAY = 0.99;
 export const DEFAULT_BURN_IN = 5;
+export const DEFAULT_PALETTE: 'grayscale' | 'magma' | 'viridis' | 'turbo' = 'magma';
 
 // UI defaults
 export const DEFAULT_GAIN = 1;

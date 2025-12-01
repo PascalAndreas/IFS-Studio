@@ -14,27 +14,11 @@ export function DiagnosticPanel({ diagnostics, theme }: DiagnosticPanelProps) {
     ? [
         ['frame', diagnostics.frame],
         ['fps', diagnostics.fps.toFixed(1)],
-        ['view.scale', diagnostics.viewScale.toExponential(3)],
-        ['view.offset.x', diagnostics.viewOffset.x.toExponential(3)],
-        ['view.offset.y', diagnostics.viewOffset.y.toExponential(3)],
-        ['points.global', diagnostics.numPointsGlobal],
-        ['points.local', diagnostics.numPointsLocal],
         ['drawnPoints', diagnostics.drawnPoints],
-        ['localSample', diagnostics.localSampleCount],
-        ['localInView', diagnostics.localInViewCount],
-        ['localInViewFrac', (diagnostics.localSampleCount > 0 ? diagnostics.localInViewCount / diagnostics.localSampleCount : 0).toFixed(3)],
-        ['localAge>=burn', diagnostics.localAgeGeBurn],
-        ['localAge>=burn inView', diagnostics.localAgeGeBurnInView],
-        ['globalAge>=burn', diagnostics.globalAgeGeBurn],
-        ['globalAge>=burn inView', diagnostics.globalAgeGeBurnInView],
         ['respawnSeeds', diagnostics.respawnSeeds],
         ['respawnSeedsSource', diagnostics.respawnSeedsSource],
         ['respawnProb', diagnostics.respawnProb.toFixed(4)],
         ['respawnBoostFrames', diagnostics.respawnBoostFrames],
-        ['decay', diagnostics.decay],
-        ['exposure', diagnostics.exposure],
-        ['gamma', diagnostics.gamma],
-        ['burnIn', diagnostics.burnIn],
       ]
     : [];
 

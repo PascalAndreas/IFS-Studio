@@ -3,7 +3,7 @@
  * Defines the Preset structure and worker message protocol
  */
 
-import { DEFAULT_BURN_IN, DEFAULT_DECAY, DEFAULT_EXPOSURE, DEFAULT_GAMMA } from './constants';
+import { DEFAULT_BURN_IN, DEFAULT_DECAY, DEFAULT_EXPOSURE, DEFAULT_GAMMA, DEFAULT_PALETTE } from './constants';
 
 export const MAX_MAPS = 8;
 
@@ -129,7 +129,7 @@ export function createDefaultRenderParams(): RenderParams {
     decay: DEFAULT_DECAY,
     exposure: DEFAULT_EXPOSURE,
     gamma: DEFAULT_GAMMA,
-    palette: 'viridis',
+    palette: DEFAULT_PALETTE,
     invert: false,
   };
 }
@@ -204,25 +204,11 @@ export type WorkerToMainMsg =
 export interface WorkerDiagnostics {
   frame: number;
   fps: number;
-  viewScale: number;
-  viewOffset: { x: number; y: number };
-  numPointsGlobal: number;
-  numPointsLocal: number;
-  localSampleCount: number;
-  localInViewCount: number;
   respawnSeeds: number;
-  respawnSeedsSource: 'local' | 'global' | 'cache' | 'none';
+  respawnSeedsSource: 'accum' | 'cache' | 'none';
   respawnProb: number;
   respawnBoostFrames: number;
-  decay: number;
-  exposure: number;
-  gamma: number;
-  burnIn: number;
   drawnPoints: number;
-  localAgeGeBurn: number;
-  globalAgeGeBurn: number;
-  localAgeGeBurnInView: number;
-  globalAgeGeBurnInView: number;
 }
 
 const safeNumber = (v: any, fallback: number) => (Number.isFinite(v) ? v : fallback);
