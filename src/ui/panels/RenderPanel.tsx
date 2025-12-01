@@ -57,7 +57,7 @@ export function RenderPanel({ render, onRenderChange, theme }: RenderPanelProps)
         <Knob
           label="Exposure"
           value={render.exposure}
-          min={0}
+          min={0.05}
           max={5}
           step={0.05}
           defaultValue={DEFAULT_EXPOSURE}
@@ -67,7 +67,7 @@ export function RenderPanel({ render, onRenderChange, theme }: RenderPanelProps)
         <Knob
           label="Gamma"
           value={render.gamma}
-          min={0.2}
+          min={0.05}
           max={3}
           step={0.05}
           defaultValue={DEFAULT_GAMMA}

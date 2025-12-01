@@ -1,6 +1,15 @@
 import { detectCapabilities, logCapabilities } from '../engine/gl/capabilities';
 import { GLCapabilities, MainToWorkerMsg, Preset, WorkerToMainMsg, SimParams, RenderParams, paletteToId, WorkerDiagnostics } from '../engine/types';
-import { FIT_VIEW_MARGIN, BOUNDS_SAMPLE_SIZE, DEFAULT_EXPOSURE, DEFAULT_GAMMA, DEFAULT_DECAY, DEFAULT_BURN_IN } from '../engine/constants';
+import {
+  FIT_VIEW_MARGIN,
+  BOUNDS_SAMPLE_SIZE,
+  DEFAULT_EXPOSURE,
+  DEFAULT_GAMMA,
+  DEFAULT_DECAY,
+  DEFAULT_BURN_IN,
+  DEFAULT_MAX_POST_FPS,
+  DEFAULT_SIM_STEPS_PER_TICK,
+} from '../engine/constants';
 import { PostprocessPass } from '../engine/gl/postprocessPass';
 import { TransformFeedbackSim } from '../engine/gl/transformFeedbackSim';
 import { AccumulatePass } from '../engine/gl/accumulatePass';
@@ -25,6 +34,8 @@ class RenderWorker {
   private pointViewScaleLoc: WebGLUniformLocation | null = null;
   private pointViewOffsetLoc: WebGLUniformLocation | null = null;
   private pointBurnInLoc: WebGLUniformLocation | null = null;
+  private pointPosLoc = -1;
+  private pointAgeLoc = -1;
   private accumulate: AccumulatePass | null = null;
   private frameIndex = 0;
   private lastView: { scale: number; offset: { x: number; y: number } } | null = null;
@@ -32,6 +43,7 @@ class RenderWorker {
   private fpsEstimate = 0;
   private lastRenderTime = 0;
   private lastTiming = { simMs: 0, drawMs: 0, frameMs: 0 };
+  private lastFrameStart = 0;
 
   init(msg: Extract<MainToWorkerMsg, { type: 'init' }>) {
     this.canvas = msg.canvas;
@@ -150,7 +162,13 @@ class RenderWorker {
         this.loopHandle = null;
         return;
       }
-      this.renderSim(performance.now());
+      const now = performance.now();
+      const delay = this.computeFrameDelay(now);
+      if (delay > 0) {
+        this.loopHandle = setTimeout(tick, delay);
+        return;
+      }
+      this.renderSim(now);
       this.loopHandle = setTimeout(tick, 0);
     };
     this.loopHandle = setTimeout(tick, 0);
@@ -167,6 +185,7 @@ class RenderWorker {
     if (!this.gl || !this.postprocess || !this.sim || !this.pointProgram || !this.accumulate) {
       return;
     }
+    this.lastFrameStart = time;
     const gl = this.gl;
 
     gl.viewport(0, 0, this.pixelWidth, this.pixelHeight);
@@ -183,38 +202,41 @@ class RenderWorker {
     }
     this.lastRenderTime = time;
 
+    const steps = Math.max(1, this.simParams?.simStepsPerTick ?? DEFAULT_SIM_STEPS_PER_TICK);
+    const viewScale = this.preset?.view?.scale ?? 1.0;
+    const viewOffset = this.preset?.view?.offset ?? { x: 0, y: 0 };
+    const burnInFrames = this.simParams?.burnIn ?? DEFAULT_BURN_IN;
+
     const tSimStart = performance.now();
-    const steps = Math.max(1, this.simParams?.simStepsPerTick ?? 1);
+    const tDrawStart = performance.now();
+    this.accumulate.beginFrame(this.renderParams?.decay ?? DEFAULT_DECAY);
+
     for (let i = 0; i < steps; i++) {
       this.sim.step(this.frameIndex);
-      // Accumulate after each step
-      const tDrawStart = performance.now();
-      this.accumulate.beginFrame(this.renderParams?.decay ?? DEFAULT_DECAY);
 
       gl.useProgram(this.pointProgram);
-      const posLoc = gl.getAttribLocation(this.pointProgram, 'a_position');
-      const ageLoc = gl.getAttribLocation(this.pointProgram, 'a_age');
-      if (posLoc < 0) return;
-      this.sim.bindForRender(posLoc, ageLoc);
+      if (this.pointPosLoc < 0) {
+        this.pointPosLoc = gl.getAttribLocation(this.pointProgram, 'a_position');
+        this.pointAgeLoc = gl.getAttribLocation(this.pointProgram, 'a_age');
+      }
+      if (this.pointPosLoc < 0) return;
+      this.sim.bindForRender(this.pointPosLoc, this.pointAgeLoc);
 
       if (this.pointColorLoc) gl.uniform3f(this.pointColorLoc, 1.0, 1.0, 1.0);
-      const viewScale = this.preset?.view?.scale ?? 1.0;
-      const viewOffset = this.preset?.view?.offset ?? { x: 0, y: 0 };
       if (this.pointViewScaleLoc) gl.uniform2f(this.pointViewScaleLoc, viewScale, viewScale);
       if (this.pointViewOffsetLoc) gl.uniform2f(this.pointViewOffsetLoc, viewOffset.x, viewOffset.y);
       if (this.pointSizeLoc) gl.uniform1f(this.pointSizeLoc, 1.5);
-      const burnInFrames = this.simParams?.burnIn ?? DEFAULT_BURN_IN;
       if (this.pointBurnInLoc) gl.uniform1f(this.pointBurnInLoc, burnInFrames);
 
       if (this.frameIndex >= (this.simParams?.burnIn ?? DEFAULT_BURN_IN)) {
         this.accumulate.drawPoints(this.sim.getNumPoints(), 1.5);
       }
-      this.accumulate.endFrame();
-      gl.bindVertexArray(null);
-      this.lastTiming.drawMs = performance.now() - tDrawStart;
-
       this.frameIndex++;
     }
+    this.accumulate.endFrame();
+    gl.bindVertexArray(null);
+
+    this.lastTiming.drawMs = performance.now() - tDrawStart;
     this.lastTiming.simMs = performance.now() - tSimStart;
 
     // Postprocess every frame to prevent strobing
@@ -320,6 +342,8 @@ class RenderWorker {
     this.pointViewScaleLoc = gl.getUniformLocation(this.pointProgram, 'u_viewScale');
     this.pointViewOffsetLoc = gl.getUniformLocation(this.pointProgram, 'u_viewOffset');
     this.pointBurnInLoc = gl.getUniformLocation(this.pointProgram, 'u_burnInFrames');
+    this.pointPosLoc = gl.getAttribLocation(this.pointProgram, 'a_position');
+    this.pointAgeLoc = gl.getAttribLocation(this.pointProgram, 'a_age');
   }
 
   private recreateSim() {
@@ -349,6 +373,14 @@ class RenderWorker {
     const err = error instanceof Error ? error : new Error(String(error));
     console.error('[Worker]', err);
     this.postMessage({ type: 'error', message: err.message, stack: err.stack });
+  }
+
+  private computeFrameDelay(now: number): number {
+    const maxFps = Math.max(1, this.simParams?.maxPostFps ?? DEFAULT_MAX_POST_FPS);
+    const minInterval = 1000 / maxFps;
+    if (this.lastFrameStart <= 0) return 0;
+    const elapsed = now - this.lastFrameStart;
+    return elapsed < minInterval ? minInterval - elapsed : 0;
   }
 
   private maybeSendDiagnostics(timeMs: number) {

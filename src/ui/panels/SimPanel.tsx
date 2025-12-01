@@ -1,4 +1,5 @@
 import { SimParams, clampSim } from '../../engine/types';
+import { DEFAULT_MAX_POST_FPS, DEFAULT_SIM_STEPS_PER_TICK } from '../../engine/constants';
 import { Theme } from '../theme';
 import { InfoTip } from '../components/InfoTip';
 
@@ -77,7 +78,7 @@ export function SimPanel({ sim, onSimChange, theme }: SimPanelProps) {
         <div style={labelStyle}>Sim Steps / Tick <InfoTip helpKey="sim.simStepsPerTick" theme={theme} /></div>
         <input
           type="number"
-          value={sim.simStepsPerTick ?? 1}
+          value={sim.simStepsPerTick ?? DEFAULT_SIM_STEPS_PER_TICK}
           min={1}
           onChange={(e) => onSimChange(clampSim({ ...sim, simStepsPerTick: parseInt(e.target.value || '1', 10) }))}
           style={inputStyle}
@@ -87,7 +88,7 @@ export function SimPanel({ sim, onSimChange, theme }: SimPanelProps) {
         <div style={labelStyle}>Post Max FPS <InfoTip helpKey="sim.maxPostFps" theme={theme} /></div>
         <input
           type="number"
-          value={sim.maxPostFps ?? 60}
+          value={sim.maxPostFps ?? DEFAULT_MAX_POST_FPS}
           min={1}
           onChange={(e) => onSimChange(clampSim({ ...sim, maxPostFps: parseInt(e.target.value || '1', 10) }))}
           style={inputStyle}
