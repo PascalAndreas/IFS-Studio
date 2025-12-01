@@ -15,10 +15,9 @@ export function DiagnosticPanel({ diagnostics, theme }: DiagnosticPanelProps) {
         ['frame', diagnostics.frame],
         ['fps', diagnostics.fps.toFixed(1)],
         ['drawnPoints', diagnostics.drawnPoints],
-        ['respawnSeeds', diagnostics.respawnSeeds],
-        ['respawnSeedsSource', diagnostics.respawnSeedsSource],
-        ['respawnProb', diagnostics.respawnProb.toFixed(4)],
-        ['respawnBoostFrames', diagnostics.respawnBoostFrames],
+        ['simMs', diagnostics.simMs.toFixed(4)],
+        ['drawMs', diagnostics.drawMs.toFixed(4)],
+        ['frameMs', diagnostics.frameMs.toFixed(2)],
       ]
     : [];
 

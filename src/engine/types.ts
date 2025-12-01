@@ -62,6 +62,10 @@ export interface SimParams {
   numPoints: number;    // Number of particles
   burnIn: number;       // Frames to run before accumulating
   seed: number;         // RNG seed
+  itersPerStep?: number;
+  useGuard?: boolean;
+  simStepsPerTick?: number; // How many sim/accum steps per loop tick
+  maxPostFps?: number;      // Cap postprocess output FPS
 }
 
 /**
@@ -121,6 +125,10 @@ export function createDefaultSimParams(): SimParams {
     numPoints: 1_000_000,
     burnIn: DEFAULT_BURN_IN,
     seed: 42,
+    itersPerStep: 16,
+    useGuard: true,
+    simStepsPerTick: 1,
+    maxPostFps: 60,
   };
 }
 
@@ -204,11 +212,10 @@ export type WorkerToMainMsg =
 export interface WorkerDiagnostics {
   frame: number;
   fps: number;
-  respawnSeeds: number;
-  respawnSeedsSource: 'accum' | 'cache' | 'none';
-  respawnProb: number;
-  respawnBoostFrames: number;
   drawnPoints: number;
+  simMs: number;
+  drawMs: number;
+  frameMs: number;
 }
 
 const safeNumber = (v: any, fallback: number) => (Number.isFinite(v) ? v : fallback);
@@ -251,6 +258,10 @@ export function clampSim(sim: SimParams): SimParams {
     numPoints: Math.round(Math.max(100, safeNumber(sim.numPoints, 100000))),
     burnIn: Math.max(0, Math.round(safeNumber(sim.burnIn, 0))),
     seed: Math.round(safeNumber(sim.seed, 1)),
+    itersPerStep: Math.max(1, Math.round(safeNumber(sim.itersPerStep, 16))),
+    useGuard: !!sim.useGuard,
+    simStepsPerTick: Math.max(1, Math.round(safeNumber(sim.simStepsPerTick, 1))),
+    maxPostFps: Math.max(1, Math.round(safeNumber(sim.maxPostFps, 60))),
   };
 }
 
