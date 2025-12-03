@@ -11,12 +11,15 @@ import {
   DEFAULT_SIM_STEPS_PER_TICK,
   DEFAULT_AUTO_EXPOSURE_KEY,
   DEFAULT_AUTO_EXPOSURE,
+  DIAGNOSTICS_EMA_ALPHA,
 } from '../engine/constants';
 import { PostprocessPass } from '../engine/gl/postprocessPass';
 import { TransformFeedbackSim } from '../engine/gl/transformFeedbackSim';
 import { AccumulatePass } from '../engine/gl/accumulatePass';
 import pointVertSrc from '../shaders/points.vert.glsl?raw';
 import pointFragSrc from '../shaders/points.frag.glsl?raw';
+
+type GpuTimerLabel = 'sim' | 'accum' | 'decay' | 'accumEnd' | 'post';
 
 // ------------------------------------------------------------
 // RenderWorker: orchestrates sim, accumulation, postprocess
@@ -42,12 +45,9 @@ class RenderWorker {
   private frameIndex = 0; // sim frame counter (do not reset on view-only changes)
   private accumClears = 0;
   private timerExt: any = null;
-  private activeGpuTimers = new Map<WebGLQuery, { label: 'sim' | 'accum' | 'post'; frame: number }>();
-  private pendingTimerQueries: Array<{ query: WebGLQuery; label: 'sim' | 'accum' | 'post'; frame: number }> = [];
-  private gpuFrameBuckets = new Map<number, Partial<Record<'sim' | 'accum' | 'post', number>>>();
-  private gpuFrameCounter = 0;
-  private lastGpuTotals: Partial<Record<'sim' | 'accum' | 'post', number>> = {};
-  private lastGpuFrame = -1;
+  private gpuTimerLabel = new Map<WebGLQuery, GpuTimerLabel>();
+  private pendingTimerQueries: WebGLQuery[] = [];
+  private gpuEma: Record<GpuTimerLabel, number> = { sim: 0, accum: 0, decay: 0, accumEnd: 0, post: 0 };
   private lastView: { scale: number; offset: { x: number; y: number } } | null = null;
   private diagLastSent = 0;
   private fpsEstimate = 0;
@@ -159,11 +159,11 @@ class RenderWorker {
     this.sim?.dispose();
     this.accumulate?.dispose();
     if (this.gl && this.timerExt) {
-      for (const { query } of this.pendingTimerQueries) {
+      for (const query of this.pendingTimerQueries) {
         this.gl.deleteQuery(query);
       }
     }
-    this.activeGpuTimers.clear();
+    this.gpuTimerLabel.clear();
     this.pendingTimerQueries = [];
     if (this.pointProgram && this.gl) {
       this.gl.deleteProgram(this.pointProgram);
@@ -217,7 +217,7 @@ class RenderWorker {
       const dt = time - this.lastRenderTime;
       if (dt > 0) {
         const instFps = 1000 / dt;
-        this.fpsEstimate = this.fpsEstimate === 0 ? instFps : this.fpsEstimate * 0.9 + instFps * 0.1;
+        this.fpsEstimate = this.fpsEstimate === 0 ? instFps : this.fpsEstimate * (1 - DIAGNOSTICS_EMA_ALPHA) + instFps * DIAGNOSTICS_EMA_ALPHA;
         this.lastTiming.frameMs = dt;
       }
     }
@@ -228,10 +228,7 @@ class RenderWorker {
     const viewOffset = this.preset?.view?.offset ?? { x: 0, y: 0 };
     const burnInFrames = this.simParams?.burnIn ?? DEFAULT_BURN_IN;
 
-    const frameToken = this.gpuFrameCounter++;
-    this.gpuFrameBuckets.set(frameToken, {});
-
-    const decayQuery = this.beginGpuTimer('accum', frameToken);
+    const decayQuery = this.beginGpuTimer('decay');
     this.accumulate.beginFrame(this.renderParams?.decay ?? DEFAULT_DECAY);
     this.endGpuTimer(decayQuery);
 
@@ -245,14 +242,14 @@ class RenderWorker {
     if (this.pointSizeLoc) gl.uniform1f(this.pointSizeLoc, 1.5);
 
     for (let i = 0; i < steps; i++) {
-      const simQuery = this.beginGpuTimer('sim', frameToken);
+      const simQuery = this.beginGpuTimer('sim');
       this.sim.step(this.frameIndex);
       this.endGpuTimer(simQuery);
 
       gl.useProgram(this.pointProgram);
       this.sim.bindForRender(this.pointPosLoc);
 
-      const accumQuery = this.beginGpuTimer('accum', frameToken);
+      const accumQuery = this.beginGpuTimer('accum');
       if (this.frameIndex >= burnInFrames) {
         this.accumulate.drawPoints(this.sim.getNumPoints(), 1.5);
       }
@@ -260,7 +257,7 @@ class RenderWorker {
 
       this.frameIndex++;
     }
-    const accumEndQuery = this.beginGpuTimer('accum', frameToken);
+    const accumEndQuery = this.beginGpuTimer('accumEnd');
     this.accumulate.endFrame();
     this.endGpuTimer(accumEndQuery);
     gl.bindVertexArray(null);
@@ -270,7 +267,7 @@ class RenderWorker {
     this.accumulate.prepareForSampling();
     const maxDim = Math.max(this.pixelWidth, this.pixelHeight);
     const avgMip = Math.max(0, Math.floor(Math.log2(Math.max(1, maxDim))));
-    const postQuery = this.beginGpuTimer('post', frameToken);
+    const postQuery = this.beginGpuTimer('post');
     this.postprocess.render({
       width: this.pixelWidth,
       height: this.pixelHeight,
@@ -442,13 +439,13 @@ class RenderWorker {
   }
 
   // ------------------------------------------------------------
-  // GPU timing helpers
+  // GPU timing helpers (EMA-based)
   // ------------------------------------------------------------
-  private beginGpuTimer(label: 'sim' | 'accum' | 'post', frame: number): WebGLQuery | null {
+  private beginGpuTimer(label: GpuTimerLabel): WebGLQuery | null {
     if (!this.gl || !this.timerExt) return null;
     const q = this.gl.createQuery();
     if (!q) return null;
-    this.activeGpuTimers.set(q, { label, frame });
+    this.gpuTimerLabel.set(q, label);
     this.gl.beginQuery(this.timerExt.TIME_ELAPSED_EXT, q);
     return q;
   }
@@ -456,45 +453,52 @@ class RenderWorker {
   private endGpuTimer(query: WebGLQuery | null) {
     if (!query || !this.gl || !this.timerExt) return;
     this.gl.endQuery(this.timerExt.TIME_ELAPSED_EXT);
-    const meta = this.activeGpuTimers.get(query);
-    if (meta) {
-      this.pendingTimerQueries.push({ query, ...meta });
-      this.activeGpuTimers.delete(query);
+    if (this.gpuTimerLabel.has(query)) {
+      this.pendingTimerQueries.push(query);
     }
   }
 
-  private recordGpuTime(label: 'sim' | 'accum' | 'post', frame: number, ms: number) {
-    const bucket = this.gpuFrameBuckets.get(frame) ?? {};
-    bucket[label] = (bucket[label] ?? 0) + ms;
-    this.gpuFrameBuckets.set(frame, bucket);
-    if (frame >= this.lastGpuFrame) {
-      this.lastGpuFrame = frame;
-      this.lastGpuTotals = bucket;
+  /**
+   * Compute EMA alpha adjusted for update frequency.
+   * sim and accum get `steps` updates per frame, so we adjust alpha
+   * so they have the same half-life as labels that get 1 update per frame.
+   * For same half-life: (1 - alpha_adjusted)^steps = (1 - alpha_base)^1
+   * => alpha_adjusted = 1 - (1 - alpha_base)^(1/steps)
+   */
+  private getAdjustedAlpha(label: GpuTimerLabel): number {
+    const steps = Math.max(1, this.simParams?.simStepsPerTick ?? DEFAULT_SIM_STEPS_PER_TICK);
+    if (label === 'sim' || label === 'accum') {
+      return 1 - Math.pow(1 - DIAGNOSTICS_EMA_ALPHA, 1 / steps);
     }
-    for (const key of Array.from(this.gpuFrameBuckets.keys())) {
-      if (key < frame - 3) {
-        this.gpuFrameBuckets.delete(key);
-      }
-    }
+    return DIAGNOSTICS_EMA_ALPHA;
+  }
+
+  private recordGpuTime(label: GpuTimerLabel, ms: number) {
+    const alpha = this.getAdjustedAlpha(label);
+    const prev = this.gpuEma[label];
+    this.gpuEma[label] = prev === 0 ? ms : prev * (1 - alpha) + ms * alpha;
   }
 
   private pollGpuTimers() {
     if (!this.timerExt || !this.pendingTimerQueries.length || !this.gl) return;
     const ext = this.timerExt;
-    const remaining: typeof this.pendingTimerQueries = [];
-    for (const entry of this.pendingTimerQueries) {
-      const available = this.gl.getQueryParameter(entry.query, this.gl.QUERY_RESULT_AVAILABLE);
+    const remaining: WebGLQuery[] = [];
+    for (const query of this.pendingTimerQueries) {
+      const available = this.gl.getQueryParameter(query, this.gl.QUERY_RESULT_AVAILABLE);
       const disjoint = this.gl.getParameter(ext.GPU_DISJOINT_EXT);
       if (available && !disjoint) {
-        const ns = this.gl.getQueryParameter(entry.query, this.gl.QUERY_RESULT);
-        if (typeof ns === 'number') {
-          this.recordGpuTime(entry.label, entry.frame, ns / 1e6);
+        const ns = this.gl.getQueryParameter(query, this.gl.QUERY_RESULT);
+        const label = this.gpuTimerLabel.get(query);
+        if (typeof ns === 'number' && label) {
+          this.recordGpuTime(label, ns / 1e6);
         }
-        this.gl.deleteQuery(entry.query);
+        this.gpuTimerLabel.delete(query);
+        this.gl.deleteQuery(query);
       } else if (!available) {
-        remaining.push(entry);
+        remaining.push(query);
       } else {
-        this.gl.deleteQuery(entry.query);
+        this.gpuTimerLabel.delete(query);
+        this.gl.deleteQuery(query);
       }
     }
     this.pendingTimerQueries = remaining;
@@ -505,14 +509,18 @@ class RenderWorker {
     if (timeMs - this.diagLastSent < 500) return;
     const burnIn = this.simParams?.burnIn ?? DEFAULT_BURN_IN;
     const drawnPoints = this.frameIndex >= burnIn ? this.sim.getNumPoints() : 0;
+    const steps = Math.max(1, this.simParams?.simStepsPerTick ?? DEFAULT_SIM_STEPS_PER_TICK);
+    // Multiply per-step EMAs by steps to get per-frame totals
     const diag: WorkerDiagnostics = {
       frame: this.frameIndex,
       fps: this.fpsEstimate,
       drawnPoints,
       frameMs: this.lastTiming.frameMs,
-      gpuSimMs: this.lastGpuTotals.sim,
-      gpuAccumMs: this.lastGpuTotals.accum,
-      gpuPostMs: this.lastGpuTotals.post,
+      gpuSimMs: this.gpuEma.sim * steps,
+      gpuAccumMs: this.gpuEma.accum * steps,
+      gpuDecayMs: this.gpuEma.decay,
+      gpuAccumEndMs: this.gpuEma.accumEnd,
+      gpuPostMs: this.gpuEma.post,
       accumClears: this.accumClears || undefined,
     };
     this.postMessage({ type: 'diag', data: diag });

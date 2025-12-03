@@ -231,6 +231,8 @@ export interface WorkerDiagnostics {
   frameMs: number;
   gpuSimMs?: number;
   gpuAccumMs?: number;
+  gpuDecayMs?: number;
+  gpuAccumEndMs?: number;
   gpuPostMs?: number;
   accumClears?: number;
 }

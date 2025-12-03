@@ -28,5 +28,8 @@ export const DEFAULT_AUTO_EXPOSURE = true;
 export const DEFAULT_AUTO_EXPOSURE_KEY = 0.18;
 export const DEFAULT_PALETTE: 'grayscale' | 'magma' | 'viridis' | 'turbo' = 'magma';
 
+// Diagnostics
+export const DIAGNOSTICS_EMA_ALPHA = 0.1;
+
 // UI defaults
 export const DEFAULT_GAIN = 1;
