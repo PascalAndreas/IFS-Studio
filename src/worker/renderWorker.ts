@@ -10,7 +10,6 @@ import {
   DEFAULT_MAX_POST_FPS,
   DEFAULT_SIM_STEPS_PER_TICK,
   DEFAULT_AUTO_EXPOSURE_KEY,
-  DEFAULT_USE_FLOAT_ACCUM,
   DEFAULT_AUTO_EXPOSURE,
 } from '../engine/constants';
 import { PostprocessPass } from '../engine/gl/postprocessPass';
@@ -86,11 +85,9 @@ class RenderWorker {
       this.postprocess = new PostprocessPass(gl);
       this.postprocess.resize(this.pixelWidth, this.pixelHeight);
 
-      const useFloat = this.shouldUseFloatAccum();
       this.accumulate = new AccumulatePass(gl, {
         width: this.pixelWidth,
         height: this.pixelHeight,
-        useFloat,
       });
 
       this.recreateSim();
@@ -114,8 +111,7 @@ class RenderWorker {
       prevSim.seed !== sim.seed ||
       prevSim.burnIn !== sim.burnIn ||
       (prevSim.itersPerStep ?? 16) !== (sim.itersPerStep ?? 16) ||
-      (prevSim.useGuard ?? true) !== (sim.useGuard ?? true) ||
-      (prevSim.useFloatAccum ?? DEFAULT_USE_FLOAT_ACCUM) !== (sim.useFloatAccum ?? DEFAULT_USE_FLOAT_ACCUM);
+      (prevSim.useGuard ?? true) !== (sim.useGuard ?? true);
 
     this.preset = preset;
     this.simParams = sim;
@@ -424,15 +420,6 @@ class RenderWorker {
     this.postMessage({ type: 'error', message: err.message, stack: err.stack });
   }
 
-  // ------------------------------------------------------------
-  // Accumulation precision
-  // ------------------------------------------------------------
-  private shouldUseFloatAccum(): boolean {
-    const wantFloat = this.simParams?.useFloatAccum ?? DEFAULT_USE_FLOAT_ACCUM;
-    const canFloat = !!(this.capabilities?.hasColorBufferFloat && this.capabilities?.hasFloatBlend);
-    return wantFloat && canFloat;
-  }
-
   private computeFrameDelay(now: number): number {
     const maxFps = Math.max(1, this.simParams?.maxPostFps ?? DEFAULT_MAX_POST_FPS);
     const minInterval = 1000 / maxFps;
@@ -446,18 +433,11 @@ class RenderWorker {
   // ------------------------------------------------------------
   private ensureAccumulate() {
     if (!this.gl) return;
-    const useFloat = this.shouldUseFloatAccum();
     if (!this.accumulate) {
       this.accumulate = new AccumulatePass(this.gl, {
         width: this.pixelWidth,
         height: this.pixelHeight,
-        useFloat,
       });
-      return;
-    }
-    const changed = this.accumulate.setUseFloat(useFloat);
-    if (changed) {
-      this.resetAccumulation();
     }
   }
 

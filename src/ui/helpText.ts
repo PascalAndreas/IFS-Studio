@@ -4,7 +4,6 @@ export const helpText = {
   'sim.burnIn': 'Frames to run before accumulation starts. Helps hide startup transients.',
   'sim.itersPerStep': 'Number of IFS iterations per frame step. Higher values settle particles faster but cost GPU time.',
   'sim.useGuard': 'If enabled, NaN positions are reset into view to avoid runaway particles.',
-  'sim.useFloatAccum': 'Use 16-bit float accumulation. Turn off for 8-bit accumulation to reduce bandwidth at the cost of range.',
   'sim.simStepsPerTick': 'How many sim/accum steps to run per loop tick. Higher = faster fill, more GPU time.',
   'sim.maxPostFps': 'Maximum FPS for postprocess/display; sim/accum may run faster.',
   'sim.pause': 'Toggle simulation loop without resetting state.',

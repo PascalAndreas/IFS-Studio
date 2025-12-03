@@ -24,7 +24,6 @@ export const DEFAULT_ITERS_PER_STEP = 8;
 export const DEFAULT_SIM_STEPS_PER_TICK = 8;
 export const DEFAULT_MAX_POST_FPS = 30;
 export const DEFAULT_USE_GUARD = true;
-export const DEFAULT_USE_FLOAT_ACCUM = true;
 export const DEFAULT_AUTO_EXPOSURE = true;
 export const DEFAULT_AUTO_EXPOSURE_KEY = 0.18;
 export const DEFAULT_PALETTE: 'grayscale' | 'magma' | 'viridis' | 'turbo' = 'magma';

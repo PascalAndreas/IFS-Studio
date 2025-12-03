@@ -15,7 +15,6 @@ import {
   DEFAULT_SIM_STEPS_PER_TICK,
   DEFAULT_MAX_POST_FPS,
   DEFAULT_USE_GUARD,
-  DEFAULT_USE_FLOAT_ACCUM,
   DEFAULT_AUTO_EXPOSURE,
 } from './constants';
 
@@ -81,7 +80,6 @@ export interface SimParams {
   useGuard?: boolean;
   simStepsPerTick?: number; // How many sim/accum steps per loop tick
   maxPostFps?: number;      // Cap postprocess output FPS
-  useFloatAccum?: boolean;  // Whether to use float accumulation targets when supported
 }
 
 /**
@@ -145,7 +143,6 @@ export function createDefaultSimParams(): SimParams {
     useGuard: DEFAULT_USE_GUARD,
     simStepsPerTick: DEFAULT_SIM_STEPS_PER_TICK,
     maxPostFps: DEFAULT_MAX_POST_FPS,
-    useFloatAccum: DEFAULT_USE_FLOAT_ACCUM,
   };
 }
 
@@ -282,7 +279,6 @@ export function clampSim(sim: SimParams): SimParams {
     useGuard: sim.useGuard ?? DEFAULT_USE_GUARD,
     simStepsPerTick: Math.max(1, Math.round(safeNumber(sim.simStepsPerTick, DEFAULT_SIM_STEPS_PER_TICK))),
     maxPostFps: Math.max(1, Math.round(safeNumber(sim.maxPostFps, DEFAULT_MAX_POST_FPS))),
-    useFloatAccum: sim.useFloatAccum ?? DEFAULT_USE_FLOAT_ACCUM,
   };
 }
 

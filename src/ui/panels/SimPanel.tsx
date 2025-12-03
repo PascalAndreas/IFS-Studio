@@ -1,6 +1,6 @@
 import { SimParams, clampSim } from '../../engine/types';
 import { ToggleSwitch } from '../components/ToggleSwitch';
-import { DEFAULT_MAX_POST_FPS, DEFAULT_SIM_STEPS_PER_TICK, DEFAULT_USE_FLOAT_ACCUM } from '../../engine/constants';
+import { DEFAULT_MAX_POST_FPS, DEFAULT_SIM_STEPS_PER_TICK } from '../../engine/constants';
 import { Theme } from '../theme';
 import { InfoTip } from '../components/InfoTip';
 
@@ -95,25 +95,14 @@ export function SimPanel({ sim, onSimChange, theme }: SimPanelProps) {
           style={inputStyle}
         />
       </div>
-      <div style={{ ...rowStyle, display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <ToggleSwitch
-            checked={!!sim.useGuard}
-            onChange={(v) => onSimChange(clampSim({ ...sim, useGuard: v }))}
-            label="NaN Guard"
-            theme={theme}
-          />
-          <InfoTip helpKey="sim.useGuard" theme={theme} />
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <ToggleSwitch
-            checked={sim.useFloatAccum ?? DEFAULT_USE_FLOAT_ACCUM}
-            onChange={(v) => onSimChange(clampSim({ ...sim, useFloatAccum: v }))}
-            label="16-bit Accum"
-            theme={theme}
-          />
-          <InfoTip helpKey="sim.useFloatAccum" theme={theme} />
-        </div>
+      <div style={{ ...rowStyle, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <ToggleSwitch
+          checked={!!sim.useGuard}
+          onChange={(v) => onSimChange(clampSim({ ...sim, useGuard: v }))}
+          label="NaN Guard"
+          theme={theme}
+        />
+        <InfoTip helpKey="sim.useGuard" theme={theme} />
       </div>
     </div>
   );

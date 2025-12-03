@@ -5,7 +5,6 @@ import decayFragSrc from '../../shaders/accumulateDecay.frag.glsl?raw';
 export type AccumulateSettings = {
   width: number;
   height: number;
-  useFloat: boolean;
 };
 
 export class AccumulatePass {
@@ -15,7 +14,6 @@ export class AccumulatePass {
   private readIndex = 0;
   private width: number;
   private height: number;
-  private useFloat: boolean;
   private decayProgram: WebGLProgram | null = null;
   private uDecay: WebGLUniformLocation | null = null;
   private uPrev: WebGLUniformLocation | null = null;
@@ -24,7 +22,6 @@ export class AccumulatePass {
     this.gl = gl;
     this.width = settings.width;
     this.height = settings.height;
-    this.useFloat = settings.useFloat;
     this.init();
   }
 
@@ -35,17 +32,6 @@ export class AccumulatePass {
     this.createTargets();
   }
 
-  setUseFloat(useFloat: boolean): boolean {
-    if (useFloat === this.useFloat) return false;
-    this.useFloat = useFloat;
-    this.disposeTextures();
-    this.createTargets();
-    return true;
-  }
-
-  isFloat(): boolean {
-    return this.useFloat;
-  }
 
   beginFrame(decay: number): void {
     const gl = this.gl;
@@ -134,10 +120,7 @@ export class AccumulatePass {
     const tex = gl.createTexture();
     if (!tex) throw new Error('Failed to create accumulation texture');
     gl.bindTexture(gl.TEXTURE_2D, tex);
-    const internalFormat = this.useFloat ? gl.R16F : gl.R8;
-    const format = gl.RED;
-    const type = this.useFloat ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
-    gl.texImage2D(gl.TEXTURE_2D, 0, internalFormat, this.width, this.height, 0, format, type, null);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R16F, this.width, this.height, 0, gl.RED, gl.HALF_FLOAT, null);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
