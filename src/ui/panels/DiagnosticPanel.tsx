@@ -15,9 +15,11 @@ export function DiagnosticPanel({ diagnostics, theme }: DiagnosticPanelProps) {
         ['frame', diagnostics.frame],
         ['fps', diagnostics.fps.toFixed(1)],
         ['drawnPoints', diagnostics.drawnPoints],
-        ['simMs', diagnostics.simMs.toFixed(4)],
-        ['drawMs', diagnostics.drawMs.toFixed(4)],
         ['frameMs', diagnostics.frameMs.toFixed(2)],
+        ...(diagnostics.gpuSimMs !== undefined ? [['gpuSimMs', diagnostics.gpuSimMs.toFixed(4)]] : []),
+        ...(diagnostics.gpuAccumMs !== undefined ? [['gpuAccumMs', diagnostics.gpuAccumMs.toFixed(4)]] : []),
+        ...(diagnostics.gpuPostMs !== undefined ? [['gpuPostMs', diagnostics.gpuPostMs.toFixed(4)]] : []),
+        ...(diagnostics.accumClears !== undefined ? [['accumClears', diagnostics.accumClears]] : []),
       ]
     : [];
 

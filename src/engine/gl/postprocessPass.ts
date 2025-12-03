@@ -10,6 +10,9 @@ export type PostprocessUniforms = {
   paletteId: number;
   invert: boolean;
   densityTex: WebGLTexture;
+  autoExposure: boolean;
+  autoKey: number;
+  avgMip: number;
 };
 
 export class PostprocessPass {
@@ -22,6 +25,9 @@ export class PostprocessPass {
   private uDensity: WebGLUniformLocation | null = null;
   private uPaletteId: WebGLUniformLocation | null = null;
   private uInvert: WebGLUniformLocation | null = null;
+  private uAvgMip: WebGLUniformLocation | null = null;
+  private uAutoKey: WebGLUniformLocation | null = null;
+  private uAutoExposure: WebGLUniformLocation | null = null;
 
   constructor(gl: WebGL2RenderingContext) {
     this.gl = gl;
@@ -44,6 +50,9 @@ export class PostprocessPass {
     gl.uniform1f(this.uGamma, u.gamma);
     gl.uniform1i(this.uPaletteId, u.paletteId);
     gl.uniform1i(this.uInvert, u.invert ? 1 : 0);
+    gl.uniform1f(this.uAvgMip, u.avgMip);
+    gl.uniform1f(this.uAutoKey, u.autoKey);
+    gl.uniform1i(this.uAutoExposure, u.autoExposure ? 1 : 0);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, u.densityTex);
     gl.uniform1i(this.uDensity, 0);
@@ -78,6 +87,9 @@ export class PostprocessPass {
     this.uDensity = gl.getUniformLocation(this.program, 'u_density');
     this.uPaletteId = gl.getUniformLocation(this.program, 'u_paletteId');
     this.uInvert = gl.getUniformLocation(this.program, 'u_invert');
+    this.uAvgMip = gl.getUniformLocation(this.program, 'u_avgMip');
+    this.uAutoKey = gl.getUniformLocation(this.program, 'u_autoKey');
+    this.uAutoExposure = gl.getUniformLocation(this.program, 'u_autoExposure');
 
     this.vao = gl.createVertexArray();
     gl.bindVertexArray(this.vao);

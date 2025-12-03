@@ -96,7 +96,7 @@ export class TransformFeedbackSim {
     gl.bindVertexArray(this.vaos[this.readIndex]);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers[this.readIndex]);
     gl.enableVertexAttribArray(0);
-    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 8, 0);
 
     // Transform feedback target
     gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, this.tf);
@@ -115,18 +115,14 @@ export class TransformFeedbackSim {
     this.readIndex = writeIndex;
   }
 
-  bindForRender(positionAttribLocation: number, ageAttribLocation?: number): void {
+  bindForRender(positionAttribLocation: number): void {
     if (!this.vaos || !this.buffers) return;
     const gl = this.gl;
 
     gl.bindVertexArray(this.vaos[this.readIndex]);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers[this.readIndex]);
     gl.enableVertexAttribArray(positionAttribLocation);
-    gl.vertexAttribPointer(positionAttribLocation, 2, gl.FLOAT, false, 12, 0);
-    if (ageAttribLocation !== undefined && ageAttribLocation >= 0) {
-      gl.enableVertexAttribArray(ageAttribLocation);
-      gl.vertexAttribPointer(ageAttribLocation, 1, gl.FLOAT, false, 12, 8);
-    }
+    gl.vertexAttribPointer(positionAttribLocation, 2, gl.FLOAT, false, 8, 0);
   }
 
   getNumPoints(): number {
@@ -139,7 +135,7 @@ export class TransformFeedbackSim {
     }
     const gl = this.gl;
     const samples = Math.min(maxSamples, this.params.numPoints);
-    const array = new Float32Array(samples * 3);
+    const array = new Float32Array(samples * 2);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers[this.readIndex]);
     gl.getBufferSubData(gl.ARRAY_BUFFER, 0, array);
     gl.bindBuffer(gl.ARRAY_BUFFER, null);
@@ -148,8 +144,8 @@ export class TransformFeedbackSim {
     let maxX = Number.NEGATIVE_INFINITY;
     let maxY = Number.NEGATIVE_INFINITY;
     for (let i = 0; i < samples; i++) {
-      const x = array[i * 3];
-      const y = array[i * 3 + 1];
+      const x = array[i * 2];
+      const y = array[i * 2 + 1];
       if (x < minX) minX = x;
       if (y < minY) minY = y;
       if (x > maxX) maxX = x;
@@ -167,8 +163,8 @@ export class TransformFeedbackSim {
     }
     const gl = this.gl;
     const samples = Math.min(maxSamples, this.params.numPoints);
-    const array = new Float32Array(samples * 3);
-    const offsetBytes = Math.max(0, Math.min(startIndex, this.params.numPoints - samples)) * 12;
+    const array = new Float32Array(samples * 2);
+    const offsetBytes = Math.max(0, Math.min(startIndex, this.params.numPoints - samples)) * 8;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers[this.readIndex]);
     gl.getBufferSubData(gl.ARRAY_BUFFER, offsetBytes, array);
     gl.bindBuffer(gl.ARRAY_BUFFER, null);
@@ -187,7 +183,7 @@ export class TransformFeedbackSim {
     this.program = createProgram(this.gl, {
       vertexSource: tfVertSrc.replace(/__MAX_MAPS__/g, String(MAX_MAPS)),
       fragmentSource: tfFragSrc,
-      transformFeedbackVaryings: ['v_nextPosition', 'v_nextAge'],
+      transformFeedbackVaryings: ['v_nextPosition'],
     });
 
     this.uSeed = this.gl.getUniformLocation(this.program, 'u_seed');
@@ -208,12 +204,11 @@ export class TransformFeedbackSim {
   private initBuffers(): void {
     const gl = this.gl;
     const count = Math.max(1, this.params.numPoints);
-    const positions = new Float32Array(count * 3);
+    const positions = new Float32Array(count * 2);
     const rand = this.seededRng(this.params.seed);
     for (let i = 0; i < count; i++) {
-      positions[i * 3 + 0] = (rand() - 0.5) * 0.1;
-      positions[i * 3 + 1] = (rand() - 0.5) * 0.1;
-      positions[i * 3 + 2] = 0;
+      positions[i * 2 + 0] = (rand() - 0.5) * 0.1;
+      positions[i * 2 + 1] = (rand() - 0.5) * 0.1;
     }
 
     const bufferA = gl.createBuffer();
@@ -238,12 +233,12 @@ export class TransformFeedbackSim {
     gl.bindVertexArray(vaoA);
     gl.bindBuffer(gl.ARRAY_BUFFER, bufferA);
     gl.enableVertexAttribArray(0);
-    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
 
     gl.bindVertexArray(vaoB);
     gl.bindBuffer(gl.ARRAY_BUFFER, bufferB);
     gl.enableVertexAttribArray(0);
-    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
 
     gl.bindVertexArray(null);
     gl.bindBuffer(gl.ARRAY_BUFFER, null);

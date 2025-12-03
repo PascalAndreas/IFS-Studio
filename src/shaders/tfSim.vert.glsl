@@ -1,9 +1,8 @@
 #version 300 es
 precision highp float;
 
-layout(location = 0) in vec3 a_positionAge;
+layout(location = 0) in vec2 a_position;
 out vec2 v_nextPosition;
-out float v_nextAge;
 
 uniform uint u_seed;
 uniform uint u_frame;
@@ -31,8 +30,7 @@ float rand(uvec3 x) {
 }
 
 void main() {
-  vec2 p = a_positionAge.xy;
-  float age = a_positionAge.z;
+  vec2 p = a_position;
 
   int iterCount = max(1, u_iterCount);
   for (int iter = 0; iter < 64; iter++) { // safety cap
@@ -62,12 +60,8 @@ void main() {
       float r2 = rand(uvec3(uint(gl_VertexID) + 31u + uint(iter), u_frame, u_seed)) * 2.0 - 1.0;
       vec2 clipSpawn = vec2(r1, r2);
       p = (clipSpawn - u_viewOffset) / u_viewScale;
-      age = 0.0;
     }
-
-    age += 1.0;
   }
 
   v_nextPosition = p;
-  v_nextAge = age;
 }

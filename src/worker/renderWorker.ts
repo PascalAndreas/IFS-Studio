@@ -9,6 +9,9 @@ import {
   DEFAULT_BURN_IN,
   DEFAULT_MAX_POST_FPS,
   DEFAULT_SIM_STEPS_PER_TICK,
+  DEFAULT_AUTO_EXPOSURE_KEY,
+  DEFAULT_USE_FLOAT_ACCUM,
+  DEFAULT_AUTO_EXPOSURE,
 } from '../engine/constants';
 import { PostprocessPass } from '../engine/gl/postprocessPass';
 import { TransformFeedbackSim } from '../engine/gl/transformFeedbackSim';
@@ -16,6 +19,9 @@ import { AccumulatePass } from '../engine/gl/accumulatePass';
 import pointVertSrc from '../shaders/points.vert.glsl?raw';
 import pointFragSrc from '../shaders/points.frag.glsl?raw';
 
+// ------------------------------------------------------------
+// RenderWorker: orchestrates sim, accumulation, postprocess
+// ------------------------------------------------------------
 class RenderWorker {
   private gl: WebGL2RenderingContext | null = null;
   private canvas: OffscreenCanvas | null = null;
@@ -33,16 +39,22 @@ class RenderWorker {
   private pointSizeLoc: WebGLUniformLocation | null = null;
   private pointViewScaleLoc: WebGLUniformLocation | null = null;
   private pointViewOffsetLoc: WebGLUniformLocation | null = null;
-  private pointBurnInLoc: WebGLUniformLocation | null = null;
   private pointPosLoc = -1;
-  private pointAgeLoc = -1;
   private accumulate: AccumulatePass | null = null;
-  private frameIndex = 0;
+  private frameIndex = 0; // sim frame counter (do not reset on view-only changes)
+  private accumClears = 0;
+  private timerExt: any = null;
+  private activeGpuTimers = new Map<WebGLQuery, { label: 'sim' | 'accum' | 'post'; frame: number }>();
+  private pendingTimerQueries: Array<{ query: WebGLQuery; label: 'sim' | 'accum' | 'post'; frame: number }> = [];
+  private gpuFrameBuckets = new Map<number, Partial<Record<'sim' | 'accum' | 'post', number>>>();
+  private gpuFrameCounter = 0;
+  private lastGpuTotals: Partial<Record<'sim' | 'accum' | 'post', number>> = {};
+  private lastGpuFrame = -1;
   private lastView: { scale: number; offset: { x: number; y: number } } | null = null;
   private diagLastSent = 0;
   private fpsEstimate = 0;
   private lastRenderTime = 0;
-  private lastTiming = { simMs: 0, drawMs: 0, frameMs: 0 };
+  private lastTiming = { frameMs: 0 };
   private lastFrameStart = 0;
 
   init(msg: Extract<MainToWorkerMsg, { type: 'init' }>) {
@@ -70,11 +82,12 @@ class RenderWorker {
     try {
       this.capabilities = detectCapabilities(gl);
       logCapabilities(this.capabilities);
+      this.timerExt = gl.getExtension('EXT_disjoint_timer_query_webgl2');
 
       this.postprocess = new PostprocessPass(gl);
       this.postprocess.resize(this.pixelWidth, this.pixelHeight);
 
-      const useFloat = !!(this.capabilities.hasColorBufferFloat && this.capabilities.hasFloatBlend);
+      const useFloat = this.shouldUseFloatAccum();
       this.accumulate = new AccumulatePass(gl, {
         width: this.pixelWidth,
         height: this.pixelHeight,
@@ -102,7 +115,8 @@ class RenderWorker {
       prevSim.seed !== sim.seed ||
       prevSim.burnIn !== sim.burnIn ||
       (prevSim.itersPerStep ?? 16) !== (sim.itersPerStep ?? 16) ||
-      (prevSim.useGuard ?? true) !== (sim.useGuard ?? true);
+      (prevSim.useGuard ?? true) !== (sim.useGuard ?? true) ||
+      (prevSim.useFloatAccum ?? DEFAULT_USE_FLOAT_ACCUM) !== (sim.useFloatAccum ?? DEFAULT_USE_FLOAT_ACCUM);
 
     this.preset = preset;
     this.simParams = sim;
@@ -123,7 +137,12 @@ class RenderWorker {
       this.sim.setView(viewScale, viewOffset);
     }
 
-    if (mapsChanged || simChanged || viewChanged) {
+    this.ensureAccumulate();
+
+    if (mapsChanged || simChanged) {
+      this.resetAccumulation();
+      this.resetFrameIndex();
+    } else if (viewChanged) {
       this.resetAccumulation();
     }
 
@@ -144,6 +163,13 @@ class RenderWorker {
     this.postprocess?.dispose();
     this.sim?.dispose();
     this.accumulate?.dispose();
+    if (this.gl && this.timerExt) {
+      for (const { query } of this.pendingTimerQueries) {
+        this.gl.deleteQuery(query);
+      }
+    }
+    this.activeGpuTimers.clear();
+    this.pendingTimerQueries = [];
     if (this.pointProgram && this.gl) {
       this.gl.deleteProgram(this.pointProgram);
     }
@@ -207,40 +233,50 @@ class RenderWorker {
     const viewOffset = this.preset?.view?.offset ?? { x: 0, y: 0 };
     const burnInFrames = this.simParams?.burnIn ?? DEFAULT_BURN_IN;
 
-    const tSimStart = performance.now();
-    const tDrawStart = performance.now();
+    const frameToken = this.gpuFrameCounter++;
+    this.gpuFrameBuckets.set(frameToken, {});
+
+    const decayQuery = this.beginGpuTimer('accum', frameToken);
     this.accumulate.beginFrame(this.renderParams?.decay ?? DEFAULT_DECAY);
+    this.endGpuTimer(decayQuery);
+
+    if (this.pointPosLoc < 0) {
+      this.pointPosLoc = gl.getAttribLocation(this.pointProgram, 'a_position');
+    }
+    if (this.pointPosLoc < 0) return;
+    gl.useProgram(this.pointProgram);
+    if (this.pointColorLoc) gl.uniform3f(this.pointColorLoc, 1.0, 1.0, 1.0);
+    if (this.pointViewScaleLoc) gl.uniform2f(this.pointViewScaleLoc, viewScale, viewScale);
+    if (this.pointViewOffsetLoc) gl.uniform2f(this.pointViewOffsetLoc, viewOffset.x, viewOffset.y);
+    if (this.pointSizeLoc) gl.uniform1f(this.pointSizeLoc, 1.5);
 
     for (let i = 0; i < steps; i++) {
+      const simQuery = this.beginGpuTimer('sim', frameToken);
       this.sim.step(this.frameIndex);
+      this.endGpuTimer(simQuery);
 
       gl.useProgram(this.pointProgram);
-      if (this.pointPosLoc < 0) {
-        this.pointPosLoc = gl.getAttribLocation(this.pointProgram, 'a_position');
-        this.pointAgeLoc = gl.getAttribLocation(this.pointProgram, 'a_age');
-      }
-      if (this.pointPosLoc < 0) return;
-      this.sim.bindForRender(this.pointPosLoc, this.pointAgeLoc);
+      this.sim.bindForRender(this.pointPosLoc);
 
-      if (this.pointColorLoc) gl.uniform3f(this.pointColorLoc, 1.0, 1.0, 1.0);
-      if (this.pointViewScaleLoc) gl.uniform2f(this.pointViewScaleLoc, viewScale, viewScale);
-      if (this.pointViewOffsetLoc) gl.uniform2f(this.pointViewOffsetLoc, viewOffset.x, viewOffset.y);
-      if (this.pointSizeLoc) gl.uniform1f(this.pointSizeLoc, 1.5);
-      if (this.pointBurnInLoc) gl.uniform1f(this.pointBurnInLoc, burnInFrames);
-
-      if (this.frameIndex >= (this.simParams?.burnIn ?? DEFAULT_BURN_IN)) {
+      const accumQuery = this.beginGpuTimer('accum', frameToken);
+      if (this.frameIndex >= burnInFrames) {
         this.accumulate.drawPoints(this.sim.getNumPoints(), 1.5);
       }
+      this.endGpuTimer(accumQuery);
+
       this.frameIndex++;
     }
+    const accumEndQuery = this.beginGpuTimer('accum', frameToken);
     this.accumulate.endFrame();
+    this.endGpuTimer(accumEndQuery);
     gl.bindVertexArray(null);
-
-    this.lastTiming.drawMs = performance.now() - tDrawStart;
-    this.lastTiming.simMs = performance.now() - tSimStart;
 
     // Postprocess every frame to prevent strobing
     const densityTex = this.accumulate.getTexture();
+    this.accumulate.prepareForSampling();
+    const maxDim = Math.max(this.pixelWidth, this.pixelHeight);
+    const avgMip = Math.max(0, Math.floor(Math.log2(Math.max(1, maxDim))));
+    const postQuery = this.beginGpuTimer('post', frameToken);
     this.postprocess.render({
       width: this.pixelWidth,
       height: this.pixelHeight,
@@ -249,11 +285,20 @@ class RenderWorker {
       paletteId: paletteToId(this.renderParams?.palette ?? 'grayscale'),
       invert: !!this.renderParams?.invert,
       densityTex,
+      autoExposure: this.renderParams?.autoExposure ?? DEFAULT_AUTO_EXPOSURE,
+      autoKey: DEFAULT_AUTO_EXPOSURE_KEY,
+      avgMip,
     });
+    this.endGpuTimer(postQuery);
+
+    this.pollGpuTimers();
 
     this.maybeSendDiagnostics(time);
   }
 
+  // ------------------------------------------------------------
+  // Sizing & view
+  // ------------------------------------------------------------
   private setSize(width: number, height: number, dpr: number) {
     this.pixelWidth = Math.max(1, Math.floor(width * dpr));
     this.pixelHeight = Math.max(1, Math.floor(height * dpr));
@@ -262,12 +307,17 @@ class RenderWorker {
       this.canvas.height = this.pixelHeight;
     }
   }
-
-  resetAccumulation() {
+  resetFrameIndex() {
     this.frameIndex = 0;
+  }
+  resetAccumulation() {
+    this.accumClears++;
     this.accumulate?.clear();
   }
 
+  // ------------------------------------------------------------
+  // View fitting
+  // ------------------------------------------------------------
   fitView(bounds: { min: { x: number; y: number }; max: { x: number; y: number } }) {
     if (!this.preset) return;
     const width = bounds.max.x - bounds.min.x;
@@ -341,9 +391,7 @@ class RenderWorker {
     this.pointSizeLoc = gl.getUniformLocation(this.pointProgram, 'u_pointSize');
     this.pointViewScaleLoc = gl.getUniformLocation(this.pointProgram, 'u_viewScale');
     this.pointViewOffsetLoc = gl.getUniformLocation(this.pointProgram, 'u_viewOffset');
-    this.pointBurnInLoc = gl.getUniformLocation(this.pointProgram, 'u_burnInFrames');
     this.pointPosLoc = gl.getAttribLocation(this.pointProgram, 'a_position');
-    this.pointAgeLoc = gl.getAttribLocation(this.pointProgram, 'a_age');
   }
 
   private recreateSim() {
@@ -363,6 +411,10 @@ class RenderWorker {
     const viewScale = this.preset.view?.scale ?? 1;
     const viewOffset = this.preset.view?.offset ?? { x: 0, y: 0 };
     this.sim.setView(viewScale, viewOffset);
+    this.frameIndex = 0;
+
+    // Recreate accumulation buffers if sim settings demand it (e.g., float toggle).
+    this.ensureAccumulate();
   }
 
   private postMessage(msg: WorkerToMainMsg) {
@@ -375,12 +427,100 @@ class RenderWorker {
     this.postMessage({ type: 'error', message: err.message, stack: err.stack });
   }
 
+  // ------------------------------------------------------------
+  // Accumulation precision
+  // ------------------------------------------------------------
+  private shouldUseFloatAccum(): boolean {
+    const wantFloat = this.simParams?.useFloatAccum ?? DEFAULT_USE_FLOAT_ACCUM;
+    const canFloat = !!(this.capabilities?.hasColorBufferFloat && this.capabilities?.hasFloatBlend);
+    return wantFloat && canFloat;
+  }
+
   private computeFrameDelay(now: number): number {
     const maxFps = Math.max(1, this.simParams?.maxPostFps ?? DEFAULT_MAX_POST_FPS);
     const minInterval = 1000 / maxFps;
     if (this.lastFrameStart <= 0) return 0;
     const elapsed = now - this.lastFrameStart;
     return elapsed < minInterval ? minInterval - elapsed : 0;
+  }
+
+  // ------------------------------------------------------------
+  // Accumulation buffers
+  // ------------------------------------------------------------
+  private ensureAccumulate() {
+    if (!this.gl) return;
+    const useFloat = this.shouldUseFloatAccum();
+    if (!this.accumulate) {
+      this.accumulate = new AccumulatePass(this.gl, {
+        width: this.pixelWidth,
+        height: this.pixelHeight,
+        useFloat,
+      });
+      return;
+    }
+    const changed = this.accumulate.setUseFloat(useFloat);
+    if (changed) {
+      this.resetAccumulation();
+    }
+  }
+
+  // ------------------------------------------------------------
+  // GPU timing helpers
+  // ------------------------------------------------------------
+  private beginGpuTimer(label: 'sim' | 'accum' | 'post', frame: number): WebGLQuery | null {
+    if (!this.gl || !this.timerExt) return null;
+    const q = this.gl.createQuery();
+    if (!q) return null;
+    this.activeGpuTimers.set(q, { label, frame });
+    this.gl.beginQuery(this.timerExt.TIME_ELAPSED_EXT, q);
+    return q;
+  }
+
+  private endGpuTimer(query: WebGLQuery | null) {
+    if (!query || !this.gl || !this.timerExt) return;
+    this.gl.endQuery(this.timerExt.TIME_ELAPSED_EXT);
+    const meta = this.activeGpuTimers.get(query);
+    if (meta) {
+      this.pendingTimerQueries.push({ query, ...meta });
+      this.activeGpuTimers.delete(query);
+    }
+  }
+
+  private recordGpuTime(label: 'sim' | 'accum' | 'post', frame: number, ms: number) {
+    const bucket = this.gpuFrameBuckets.get(frame) ?? {};
+    bucket[label] = (bucket[label] ?? 0) + ms;
+    this.gpuFrameBuckets.set(frame, bucket);
+    if (frame >= this.lastGpuFrame) {
+      this.lastGpuFrame = frame;
+      this.lastGpuTotals = bucket;
+    }
+    for (const key of Array.from(this.gpuFrameBuckets.keys())) {
+      if (key < frame - 3) {
+        this.gpuFrameBuckets.delete(key);
+      }
+    }
+  }
+
+  private pollGpuTimers() {
+    if (!this.timerExt || !this.pendingTimerQueries.length || !this.gl) return;
+    const ext = this.timerExt;
+    const remaining: typeof this.pendingTimerQueries = [];
+    for (const entry of this.pendingTimerQueries) {
+      const available = this.gl.getQueryParameter(entry.query, this.gl.QUERY_RESULT_AVAILABLE);
+      const disjoint = this.gl.getParameter(ext.GPU_DISJOINT_EXT);
+      if (available && !disjoint) {
+        const ns = this.gl.getQueryParameter(entry.query, this.gl.QUERY_RESULT);
+        if (typeof ns === 'number') {
+          this.recordGpuTime(entry.label, entry.frame, ns / 1e6);
+        }
+        this.gl.deleteQuery(entry.query);
+      } else if (!available) {
+        remaining.push(entry);
+      } else {
+        this.gl.deleteQuery(entry.query);
+      }
+    }
+    this.pendingTimerQueries = remaining;
   }
 
   private maybeSendDiagnostics(timeMs: number) {
@@ -392,9 +532,11 @@ class RenderWorker {
       frame: this.frameIndex,
       fps: this.fpsEstimate,
       drawnPoints,
-      simMs: this.lastTiming.simMs,
-      drawMs: this.lastTiming.drawMs,
       frameMs: this.lastTiming.frameMs,
+      gpuSimMs: this.lastGpuTotals.sim,
+      gpuAccumMs: this.lastGpuTotals.accum,
+      gpuPostMs: this.lastGpuTotals.post,
+      accumClears: this.accumClears || undefined,
     };
     this.postMessage({ type: 'diag', data: diag });
     this.diagLastSent = timeMs;
@@ -419,6 +561,7 @@ self.onmessage = (event: MessageEvent<MainToWorkerMsg>) => {
       worker.handleFitRequest(msg.warmup);
       break;
     case 'resetAccum':
+      worker.resetFrameIndex();
       worker.resetAccumulation();
       break;
     case 'dispose':

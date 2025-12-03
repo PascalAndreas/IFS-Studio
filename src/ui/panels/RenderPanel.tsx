@@ -95,6 +95,15 @@ export function RenderPanel({ render, onRenderChange, theme }: RenderPanelProps)
         />
         <InfoTip helpKey="render.invert" theme={theme} />
       </label>
+      <label style={{ color: theme.colors.muted, fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <ToggleSwitch
+          checked={render.autoExposure ?? true}
+          onChange={(v) => onRenderChange(clampRender({ ...render, autoExposure: v }))}
+          label="Auto Exposure"
+          theme={theme}
+        />
+        <InfoTip helpKey="render.autoExposure" theme={theme} />
+      </label>
     </div>
   );
 }

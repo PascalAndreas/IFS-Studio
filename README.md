@@ -52,8 +52,7 @@ src/
 ## TODO / next directions
 - Screenshots for docs.
 - Infinite zoom: simulate only visible region, spawn/retire particles as view changes.
-- OffscreenCanvas fallback for browsers without support.
-- Postprocess rework: adaptive tone mapping, better dynamic range.
+- Postprocess rework: adaptive tone mapping, better dynamic range. - 1D LUT texture?
 - By-map coloring (RGB accumulation) to highlight structure.
 - Better randomize/mutate strategies and curated presets.
 

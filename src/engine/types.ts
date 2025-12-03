@@ -15,6 +15,8 @@ import {
   DEFAULT_SIM_STEPS_PER_TICK,
   DEFAULT_MAX_POST_FPS,
   DEFAULT_USE_GUARD,
+  DEFAULT_USE_FLOAT_ACCUM,
+  DEFAULT_AUTO_EXPOSURE,
 } from './constants';
 
 export const MAX_MAPS = 8;
@@ -65,6 +67,7 @@ export interface RenderParams {
   gamma: number;        // Gamma correction for display
   palette: 'grayscale' | 'magma' | 'viridis' | 'turbo';
   invert?: boolean;
+  autoExposure?: boolean;
 }
 
 /**
@@ -78,6 +81,7 @@ export interface SimParams {
   useGuard?: boolean;
   simStepsPerTick?: number; // How many sim/accum steps per loop tick
   maxPostFps?: number;      // Cap postprocess output FPS
+  useFloatAccum?: boolean;  // Whether to use float accumulation targets when supported
 }
 
 /**
@@ -141,6 +145,7 @@ export function createDefaultSimParams(): SimParams {
     useGuard: DEFAULT_USE_GUARD,
     simStepsPerTick: DEFAULT_SIM_STEPS_PER_TICK,
     maxPostFps: DEFAULT_MAX_POST_FPS,
+    useFloatAccum: DEFAULT_USE_FLOAT_ACCUM,
   };
 }
 
@@ -151,6 +156,7 @@ export function createDefaultRenderParams(): RenderParams {
     gamma: DEFAULT_GAMMA,
     palette: DEFAULT_PALETTE,
     invert: false,
+    autoExposure: DEFAULT_AUTO_EXPOSURE,
   };
 }
 
@@ -225,9 +231,11 @@ export interface WorkerDiagnostics {
   frame: number;
   fps: number;
   drawnPoints: number;
-  simMs: number;
-  drawMs: number;
   frameMs: number;
+  gpuSimMs?: number;
+  gpuAccumMs?: number;
+  gpuPostMs?: number;
+  accumClears?: number;
 }
 
 const safeNumber = (v: any, fallback: number) => (Number.isFinite(v) ? v : fallback);
@@ -274,6 +282,7 @@ export function clampSim(sim: SimParams): SimParams {
     useGuard: sim.useGuard ?? DEFAULT_USE_GUARD,
     simStepsPerTick: Math.max(1, Math.round(safeNumber(sim.simStepsPerTick, DEFAULT_SIM_STEPS_PER_TICK))),
     maxPostFps: Math.max(1, Math.round(safeNumber(sim.maxPostFps, DEFAULT_MAX_POST_FPS))),
+    useFloatAccum: sim.useFloatAccum ?? DEFAULT_USE_FLOAT_ACCUM,
   };
 }
 
@@ -284,5 +293,6 @@ export function clampRender(render: RenderParams): RenderParams {
     gamma: Math.max(0.0001, safeNumber(render.gamma, DEFAULT_GAMMA)),
     palette: render.palette,
     invert: !!render.invert,
+    autoExposure: render.autoExposure ?? DEFAULT_AUTO_EXPOSURE,
   };
 }

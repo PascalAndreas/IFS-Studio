@@ -35,6 +35,18 @@ export class AccumulatePass {
     this.createTargets();
   }
 
+  setUseFloat(useFloat: boolean): boolean {
+    if (useFloat === this.useFloat) return false;
+    this.useFloat = useFloat;
+    this.disposeTextures();
+    this.createTargets();
+    return true;
+  }
+
+  isFloat(): boolean {
+    return this.useFloat;
+  }
+
   beginFrame(decay: number): void {
     const gl = this.gl;
     if (!this.textures || !this.fbos || !this.decayProgram) return;
@@ -126,7 +138,7 @@ export class AccumulatePass {
     const format = gl.RGBA;
     const type = this.useFloat ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
     gl.texImage2D(gl.TEXTURE_2D, 0, internalFormat, this.width, this.height, 0, format, type, null);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -159,5 +171,13 @@ export class AccumulatePass {
       this.gl.deleteFramebuffer(this.fbos[1]);
       this.fbos = null;
     }
+  }
+
+  prepareForSampling(): void {
+    if (!this.textures) return;
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.textures[this.readIndex]);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.bindTexture(gl.TEXTURE_2D, null);
   }
 }

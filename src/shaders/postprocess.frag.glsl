@@ -9,6 +9,9 @@ uniform float u_exposure;
 uniform float u_gamma;
 uniform int u_paletteId;
 uniform int u_invert;
+uniform float u_avgMip;
+uniform float u_autoKey;
+uniform int u_autoExposure;
 uniform sampler2D u_density;
 
 vec3 paletteGrayscale(float t) {
@@ -51,7 +54,14 @@ vec3 getPalette(int id, float t) {
 
 void main() {
   float d = texture(u_density, v_uv).r;
-  float v = log(1.0 + u_exposure * d);
+  float avg = textureLod(u_density, vec2(0.5), u_avgMip).r;
+  float exposure = u_exposure;
+  if (u_autoExposure == 1) {
+    float autoExposure = u_autoKey / max(avg, 1e-6);
+    autoExposure = clamp(autoExposure, 0.001, 8192.0);
+    exposure *= autoExposure;
+  }
+  float v = log(1.0 + exposure * d);
   v = v / (v + 1.0);
   v = pow(clamp(v, 0.0, 1.0), 1.0 / max(0.0001, u_gamma));
   if (u_invert == 1) {
