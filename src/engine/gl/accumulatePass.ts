@@ -134,8 +134,8 @@ export class AccumulatePass {
     const tex = gl.createTexture();
     if (!tex) throw new Error('Failed to create accumulation texture');
     gl.bindTexture(gl.TEXTURE_2D, tex);
-    const internalFormat = this.useFloat ? gl.RGBA16F : gl.RGBA8;
-    const format = gl.RGBA;
+    const internalFormat = this.useFloat ? gl.R16F : gl.R8;
+    const format = gl.RED;
     const type = this.useFloat ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
     gl.texImage2D(gl.TEXTURE_2D, 0, internalFormat, this.width, this.height, 0, format, type, null);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);

@@ -35,7 +35,6 @@ class RenderWorker {
   private postprocess: PostprocessPass | null = null;
   private sim: TransformFeedbackSim | null = null;
   private pointProgram: WebGLProgram | null = null;
-  private pointColorLoc: WebGLUniformLocation | null = null;
   private pointSizeLoc: WebGLUniformLocation | null = null;
   private pointViewScaleLoc: WebGLUniformLocation | null = null;
   private pointViewOffsetLoc: WebGLUniformLocation | null = null;
@@ -245,7 +244,6 @@ class RenderWorker {
     }
     if (this.pointPosLoc < 0) return;
     gl.useProgram(this.pointProgram);
-    if (this.pointColorLoc) gl.uniform3f(this.pointColorLoc, 1.0, 1.0, 1.0);
     if (this.pointViewScaleLoc) gl.uniform2f(this.pointViewScaleLoc, viewScale, viewScale);
     if (this.pointViewOffsetLoc) gl.uniform2f(this.pointViewOffsetLoc, viewOffset.x, viewOffset.y);
     if (this.pointSizeLoc) gl.uniform1f(this.pointSizeLoc, 1.5);
@@ -387,7 +385,6 @@ class RenderWorker {
     gl.deleteShader(vs);
     gl.deleteShader(fs);
 
-    this.pointColorLoc = gl.getUniformLocation(this.pointProgram, 'u_color');
     this.pointSizeLoc = gl.getUniformLocation(this.pointProgram, 'u_pointSize');
     this.pointViewScaleLoc = gl.getUniformLocation(this.pointProgram, 'u_viewScale');
     this.pointViewOffsetLoc = gl.getUniformLocation(this.pointProgram, 'u_viewOffset');
