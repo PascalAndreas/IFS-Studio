@@ -47,7 +47,6 @@ export class PostprocessPass {
     gl.uniform1i(this.uAutoExposure, u.autoExposure ? 1 : 0);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, u.densityTex);
-    gl.uniform1i(this.uDensity, 0);
 
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
@@ -86,6 +85,10 @@ export class PostprocessPass {
     gl.bindVertexArray(this.vao);
     // Fullscreen triangle via gl_VertexID, no buffers needed
     gl.bindVertexArray(null);
+
+    // Set static uniforms once (texture unit index never changes)
+    gl.useProgram(this.program);
+    gl.uniform1i(this.uDensity, 0);
   }
 
 }

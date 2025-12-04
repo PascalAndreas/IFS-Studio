@@ -56,6 +56,7 @@ class RenderWorker {
   private lastRenderTime = 0;
   private lastTiming = { frameMs: 0 };
   private lastFrameStart = 0;
+  private cachedAvgMip = 0;
 
   init(msg: Extract<MainToWorkerMsg, { type: 'init' }>) {
     this.canvas = msg.canvas;
@@ -266,8 +267,6 @@ class RenderWorker {
 
     // Postprocess every frame to prevent strobing
     const densityTex = this.accumulate.getTexture();
-    const maxDim = Math.max(this.pixelWidth, this.pixelHeight);
-    const avgMip = Math.max(0, Math.floor(Math.log2(Math.max(1, maxDim))));
     const postQuery = this.beginGpuTimer('post');
     this.postprocess.render({
       exposure: this.renderParams?.exposure ?? DEFAULT_EXPOSURE,
@@ -277,7 +276,7 @@ class RenderWorker {
       densityTex,
       autoExposure: this.renderParams?.autoExposure ?? DEFAULT_AUTO_EXPOSURE,
       autoKey: DEFAULT_AUTO_EXPOSURE_KEY,
-      avgMip,
+      avgMip: this.cachedAvgMip,
     });
     this.endGpuTimer(postQuery);
 
@@ -296,6 +295,9 @@ class RenderWorker {
       this.canvas.width = this.pixelWidth;
       this.canvas.height = this.pixelHeight;
     }
+    // Cache avgMip (only depends on resolution)
+    const maxDim = Math.max(this.pixelWidth, this.pixelHeight);
+    this.cachedAvgMip = Math.max(0, Math.floor(Math.log2(Math.max(1, maxDim))));
   }
   resetFrameIndex() {
     this.frameIndex = 0;

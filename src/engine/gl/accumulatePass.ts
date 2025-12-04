@@ -44,10 +44,14 @@ export class AccumulatePass {
     gl.useProgram(this.decayProgram);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.textures[this.readIndex]);
-    gl.uniform1i(this.uPrev, 0);
     gl.uniform1f(this.uDecay, decay);
 
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+    // Setup blend state for subsequent drawPoints calls
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE);
+    gl.blendEquation(gl.FUNC_ADD);
   }
 
   drawPoints(numPoints: number): void {
@@ -55,10 +59,7 @@ export class AccumulatePass {
     if (!this.textures || !this.fbos) return;
     const writeIndex = (this.readIndex + 1) % 2;
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbos[writeIndex]);
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.ONE, gl.ONE);
-    gl.blendEquation(gl.FUNC_ADD);
-
+    // Blend state already set by beginFrame
     gl.drawArrays(gl.POINTS, 0, numPoints);
   }
 
@@ -105,6 +106,10 @@ export class AccumulatePass {
     });
     this.uDecay = gl.getUniformLocation(this.decayProgram, 'u_decay');
     this.uPrev = gl.getUniformLocation(this.decayProgram, 'u_prev');
+
+    // Set static uniforms once (texture unit index never changes)
+    gl.useProgram(this.decayProgram);
+    gl.uniform1i(this.uPrev, 0);
   }
 
   private createTargets(): void {
