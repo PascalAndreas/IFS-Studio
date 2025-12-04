@@ -6,6 +6,7 @@ import {
   DEFAULT_EXPOSURE,
   DEFAULT_GAMMA,
   DEFAULT_DECAY,
+  DEFAULT_PALETTE,
   DEFAULT_BURN_IN,
   DEFAULT_MAX_POST_FPS,
   DEFAULT_SIM_STEPS_PER_TICK,
@@ -19,7 +20,7 @@ import { AccumulatePass } from '../engine/gl/accumulatePass';
 import pointVertSrc from '../shaders/points.vert.glsl?raw';
 import pointFragSrc from '../shaders/points.frag.glsl?raw';
 
-type GpuTimerLabel = 'sim' | 'accum' | 'decay' | 'accumEnd' | 'post';
+type GpuTimerLabel = 'sim' | 'accum' | 'decay' | 'mipmap' | 'post';
 
 // ------------------------------------------------------------
 // RenderWorker: orchestrates sim, accumulation, postprocess
@@ -47,7 +48,7 @@ class RenderWorker {
   private timerExt: any = null;
   private gpuTimerLabel = new Map<WebGLQuery, GpuTimerLabel>();
   private pendingTimerQueries: WebGLQuery[] = [];
-  private gpuEma: Record<GpuTimerLabel, number> = { sim: 0, accum: 0, decay: 0, accumEnd: 0, post: 0 };
+  private gpuEma: Record<GpuTimerLabel, number> = { sim: 0, accum: 0, decay: 0, mipmap: 0, post: 0 };
   private lastView: { scale: number; offset: { x: number; y: number } } | null = null;
   private diagLastSent = 0;
   private fpsEstimate = 0;
@@ -83,7 +84,6 @@ class RenderWorker {
       this.timerExt = gl.getExtension('EXT_disjoint_timer_query_webgl2');
 
       this.postprocess = new PostprocessPass(gl);
-      this.postprocess.resize(this.pixelWidth, this.pixelHeight);
 
       this.accumulate = new AccumulatePass(gl, {
         width: this.pixelWidth,
@@ -149,7 +149,6 @@ class RenderWorker {
     if (this.gl) {
       this.gl.viewport(0, 0, this.pixelWidth, this.pixelHeight);
     }
-    this.postprocess?.resize(this.pixelWidth, this.pixelHeight);
     this.accumulate?.resize(this.pixelWidth, this.pixelHeight);
   }
 
@@ -257,23 +256,23 @@ class RenderWorker {
 
       this.frameIndex++;
     }
-    const accumEndQuery = this.beginGpuTimer('accumEnd');
     this.accumulate.endFrame();
-    this.endGpuTimer(accumEndQuery);
     gl.bindVertexArray(null);
+
+    // Mipmap generation for auto-exposure
+    const mipmapQuery = this.beginGpuTimer('mipmap');
+    this.accumulate.prepareForSampling();
+    this.endGpuTimer(mipmapQuery);
 
     // Postprocess every frame to prevent strobing
     const densityTex = this.accumulate.getTexture();
-    this.accumulate.prepareForSampling();
     const maxDim = Math.max(this.pixelWidth, this.pixelHeight);
     const avgMip = Math.max(0, Math.floor(Math.log2(Math.max(1, maxDim))));
     const postQuery = this.beginGpuTimer('post');
     this.postprocess.render({
-      width: this.pixelWidth,
-      height: this.pixelHeight,
       exposure: this.renderParams?.exposure ?? DEFAULT_EXPOSURE,
       gamma: this.renderParams?.gamma ?? DEFAULT_GAMMA,
-      paletteId: paletteToId(this.renderParams?.palette ?? 'grayscale'),
+      paletteId: paletteToId(this.renderParams?.palette ?? DEFAULT_PALETTE),
       invert: !!this.renderParams?.invert,
       densityTex,
       autoExposure: this.renderParams?.autoExposure ?? DEFAULT_AUTO_EXPOSURE,
@@ -519,7 +518,7 @@ class RenderWorker {
       gpuSimMs: this.gpuEma.sim * steps,
       gpuAccumMs: this.gpuEma.accum * steps,
       gpuDecayMs: this.gpuEma.decay,
-      gpuAccumEndMs: this.gpuEma.accumEnd,
+      gpuMipmapMs: this.gpuEma.mipmap,
       gpuPostMs: this.gpuEma.post,
       accumClears: this.accumClears || undefined,
     };

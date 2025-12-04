@@ -19,7 +19,7 @@ export function DiagnosticPanel({ diagnostics, theme }: DiagnosticPanelProps) {
         ...(diagnostics.gpuSimMs !== undefined ? [['gpuSimMs', diagnostics.gpuSimMs.toFixed(4)] as [string, string | number]] : []),
         ...(diagnostics.gpuAccumMs !== undefined ? [['gpuAccumMs', diagnostics.gpuAccumMs.toFixed(4)] as [string, string | number]] : []),
         ...(diagnostics.gpuDecayMs !== undefined ? [['gpuDecayMs', diagnostics.gpuDecayMs.toFixed(4)] as [string, string | number]] : []),
-        ...(diagnostics.gpuAccumEndMs !== undefined ? [['gpuAccumEndMs', diagnostics.gpuAccumEndMs.toFixed(4)] as [string, string | number]] : []),
+        ...(diagnostics.gpuMipmapMs !== undefined ? [['gpuMipmapMs', diagnostics.gpuMipmapMs.toFixed(4)] as [string, string | number]] : []),
         ...(diagnostics.gpuPostMs !== undefined ? [['gpuPostMs', diagnostics.gpuPostMs.toFixed(4)] as [string, string | number]] : []),
         ...(diagnostics.accumClears !== undefined ? [['accumClears', diagnostics.accumClears] as [string, string | number]] : []),
       ]

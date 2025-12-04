@@ -4,7 +4,6 @@ precision highp float;
 in vec2 v_uv;
 out vec4 fragColor;
 
-uniform vec2 u_resolution;
 uniform float u_exposure;
 uniform float u_gamma;
 uniform int u_paletteId;

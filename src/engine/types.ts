@@ -232,7 +232,7 @@ export interface WorkerDiagnostics {
   gpuSimMs?: number;
   gpuAccumMs?: number;
   gpuDecayMs?: number;
-  gpuAccumEndMs?: number;
+  gpuMipmapMs?: number;
   gpuPostMs?: number;
   accumClears?: number;
 }

@@ -3,8 +3,6 @@ import vertSrc from '../../shaders/postprocess.vert.glsl?raw';
 import fragSrc from '../../shaders/postprocess.frag.glsl?raw';
 
 export type PostprocessUniforms = {
-  width: number;
-  height: number;
   exposure: number;
   gamma: number;
   paletteId: number;
@@ -19,7 +17,6 @@ export class PostprocessPass {
   private gl: WebGL2RenderingContext;
   private program: WebGLProgram | null = null;
   private vao: WebGLVertexArrayObject | null = null;
-  private uResolution: WebGLUniformLocation | null = null;
   private uExposure: WebGLUniformLocation | null = null;
   private uGamma: WebGLUniformLocation | null = null;
   private uDensity: WebGLUniformLocation | null = null;
@@ -34,10 +31,6 @@ export class PostprocessPass {
     this.initProgram();
   }
 
-  resize(_width: number, _height: number): void {
-    // Rendering uses uniforms only; nothing to resize besides viewport handled by caller.
-  }
-
   render(u: PostprocessUniforms): void {
     if (!this.program || !this.vao) return;
     const gl = this.gl;
@@ -45,7 +38,6 @@ export class PostprocessPass {
     gl.useProgram(this.program);
     gl.bindVertexArray(this.vao);
 
-    gl.uniform2f(this.uResolution, u.width, u.height);
     gl.uniform1f(this.uExposure, u.exposure);
     gl.uniform1f(this.uGamma, u.gamma);
     gl.uniform1i(this.uPaletteId, u.paletteId);
@@ -81,7 +73,6 @@ export class PostprocessPass {
       fragmentSource: fragSrc,
     });
 
-    this.uResolution = gl.getUniformLocation(this.program, 'u_resolution');
     this.uExposure = gl.getUniformLocation(this.program, 'u_exposure');
     this.uGamma = gl.getUniformLocation(this.program, 'u_gamma');
     this.uDensity = gl.getUniformLocation(this.program, 'u_density');
