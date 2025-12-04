@@ -17,6 +17,7 @@ import {
 import { PostprocessPass } from '../engine/gl/postprocessPass';
 import { TransformFeedbackSim } from '../engine/gl/transformFeedbackSim';
 import { AccumulatePass } from '../engine/gl/accumulatePass';
+import { createProgram } from '../engine/gl/glUtils';
 import pointVertSrc from '../shaders/points.vert.glsl?raw';
 import pointFragSrc from '../shaders/points.frag.glsl?raw';
 
@@ -351,31 +352,11 @@ class RenderWorker {
   private initPointProgram() {
     if (!this.gl) return;
     const gl = this.gl;
-    this.pointProgram = gl.createProgram();
-    if (!this.pointProgram) throw new Error('Failed to create point program');
 
-    const vs = gl.createShader(gl.VERTEX_SHADER)!;
-    gl.shaderSource(vs, pointVertSrc);
-    gl.compileShader(vs);
-    if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
-      throw new Error(`Point VS compile error: ${gl.getShaderInfoLog(vs) || ''}`);
-    }
-
-    const fs = gl.createShader(gl.FRAGMENT_SHADER)!;
-    gl.shaderSource(fs, pointFragSrc);
-    gl.compileShader(fs);
-    if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
-      throw new Error(`Point FS compile error: ${gl.getShaderInfoLog(fs) || ''}`);
-    }
-
-    gl.attachShader(this.pointProgram, vs);
-    gl.attachShader(this.pointProgram, fs);
-    gl.linkProgram(this.pointProgram);
-    if (!gl.getProgramParameter(this.pointProgram, gl.LINK_STATUS)) {
-      throw new Error(`Point program link error: ${gl.getProgramInfoLog(this.pointProgram) || ''}`);
-    }
-    gl.deleteShader(vs);
-    gl.deleteShader(fs);
+    this.pointProgram = createProgram(gl, {
+      vertexSource: pointVertSrc,
+      fragmentSource: pointFragSrc,
+    });
 
     this.pointSizeLoc = gl.getUniformLocation(this.pointProgram, 'u_pointSize');
     this.pointViewScaleLoc = gl.getUniformLocation(this.pointProgram, 'u_viewScale');
