@@ -239,7 +239,6 @@ class RenderWorker {
     gl.useProgram(this.pointProgram);
     if (this.pointViewScaleLoc) gl.uniform2f(this.pointViewScaleLoc, viewScale, viewScale);
     if (this.pointViewOffsetLoc) gl.uniform2f(this.pointViewOffsetLoc, viewOffset.x, viewOffset.y);
-    if (this.pointSizeLoc) gl.uniform1f(this.pointSizeLoc, 1.5);
 
     for (let i = 0; i < steps; i++) {
       const simQuery = this.beginGpuTimer('sim');
@@ -251,7 +250,7 @@ class RenderWorker {
 
       const accumQuery = this.beginGpuTimer('accum');
       if (this.frameIndex >= burnInFrames) {
-        this.accumulate.drawPoints(this.sim.getNumPoints(), 1.5);
+        this.accumulate.drawPoints(this.sim.getNumPoints());
       }
       this.endGpuTimer(accumQuery);
 
@@ -362,6 +361,10 @@ class RenderWorker {
     this.pointViewScaleLoc = gl.getUniformLocation(this.pointProgram, 'u_viewScale');
     this.pointViewOffsetLoc = gl.getUniformLocation(this.pointProgram, 'u_viewOffset');
     this.pointPosLoc = gl.getAttribLocation(this.pointProgram, 'a_position');
+
+    // Set constant uniforms once
+    gl.useProgram(this.pointProgram);
+    if (this.pointSizeLoc) gl.uniform1f(this.pointSizeLoc, 1.5);
   }
 
   private recreateSim() {

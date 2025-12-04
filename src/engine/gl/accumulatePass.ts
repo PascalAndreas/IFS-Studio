@@ -50,7 +50,7 @@ export class AccumulatePass {
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
-  drawPoints(numPoints: number, _pointSizePx: number): void {
+  drawPoints(numPoints: number): void {
     const gl = this.gl;
     if (!this.textures || !this.fbos) return;
     const writeIndex = (this.readIndex + 1) % 2;
